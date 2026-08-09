@@ -119,20 +119,43 @@ tells you what it did to every channel.
 
 ## Requirements
 
-- **Viewer:** a current browser. Chrome and Edge stream large exports straight to disk;
-  Safari and Firefox build them in memory, so the viewer warns above about 400 MB.
-- **Script:** Python 3.10+ with `numpy`, `scipy`, `pandas`.
+**Viewer:** a current browser, and nothing else. Chrome and Edge stream large exports
+straight to disk; Safari and Firefox build them in memory, so the viewer warns above about
+400 MB.
+
+**Scripts:** Python 3.9 or newer with `numpy`, `scipy`, and `pandas`. Either:
+
+```bash
+python -m venv .venv && source .venv/bin/activate    # Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+or, with conda:
+
+```bash
+conda env create -f environment.yml
+conda activate cath-hemo-toolkit
+```
+
+Then check the install against the bundled sample:
+
+```bash
+python scripts/validate_cleaning.py
+```
 
 ## Repository layout
 
 ```
-viewer/cath_viewer.html      the whole application, one file
-viewer/README.md             every control, and what it does
-scripts/clean_export.py      batch cleaning and CSV export
-scripts/README_cleaning.md   each cleaning step, its evidence, its validation
-scripts/make_sample.py       regenerates the synthetic sample
-sample/SYNTH01.{inf,bin}     150 s of synthetic signal to try it on
-docs/                        screenshots
+viewer/cath_viewer.html       the whole application, one file
+viewer/README.md              every control, and what it does
+scripts/clean_export.py       batch cleaning and CSV export
+scripts/validate_cleaning.py  re-derives every validation number in these docs
+scripts/make_sample.py        regenerates the synthetic sample
+scripts/README_cleaning.md    each cleaning step, its evidence, its validation
+sample/SYNTH01.{inf,bin}      150 s of synthetic signal to try it on
+requirements.txt              pip dependencies for scripts/
+environment.yml               conda equivalent
+docs/                         screenshots
 ```
 
 ## Status

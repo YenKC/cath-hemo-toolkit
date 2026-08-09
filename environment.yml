@@ -1,0 +1,11 @@
+# Conda alternative to requirements.txt.
+#   conda env create -f environment.yml
+#   conda activate cath-hemo-toolkit
+name: cath-hemo-toolkit
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.9
+  - numpy>=1.22
+  - scipy>=1.8
+  - pandas>=1.5

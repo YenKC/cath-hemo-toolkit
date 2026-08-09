@@ -3,12 +3,13 @@
 `clean_export.py` turns a raw GE `.inf`/`.bin` pair into analysis-ready CSVs.
 
 ```bash
-PY=/Users/ykc/miniforge3/envs/ai_crt/bin/python
-
-$PY scripts/clean_export.py sample/SYNTH01          # cleaned, validated defaults
-$PY scripts/clean_export.py sample/SYNTH01 --raw    # untouched — decide for yourself
-$PY scripts/clean_export.py sample/SYNTH01 --no-baseline --sat-threshold 4.5
+python scripts/clean_export.py sample/SYNTH01          # cleaned, validated defaults
+python scripts/clean_export.py sample/SYNTH01 --raw    # untouched — decide for yourself
+python scripts/clean_export.py sample/SYNTH01 --no-baseline --sat-threshold 4.5
 ```
+
+Set the environment up once with `pip install -r requirements.txt` or
+`conda env create -f environment.yml`.
 
 Every default below was chosen by measuring this recording, not by habit. Re-check them
 when a case arrives with different gain or channels — the script derives what it can

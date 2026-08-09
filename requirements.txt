@@ -1,0 +1,6 @@
+# Everything scripts/ needs. The viewer needs nothing — it is a single HTML file.
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+numpy>=1.22
+scipy>=1.8
+pandas>=1.5
