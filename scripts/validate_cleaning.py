@@ -92,7 +92,7 @@ def main():
             print(f'  {lab:<5} {sat:>6} samples at the rail  '
                   f'({100*np.isnan(cleaned[lab]).mean():5.2f}% voided after padding)')
     if not any_sat:
-        print('  none in this recording')
+        print('  none in this file')
 
     # ---- ST preservation -------------------------------------------------------------
     lead = next((l for l in ('II', 'I', 'V5') if l in cleaned), None)

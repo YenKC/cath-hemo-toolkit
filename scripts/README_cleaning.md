@@ -11,9 +11,10 @@ python scripts/clean_export.py sample/SYNTH01 --no-baseline --sat-threshold 4.5
 Set the environment up once with `pip install -r requirements.txt` or
 `conda env create -f environment.yml`.
 
-Every default below was chosen by measuring this recording, not by habit. Re-check them
-when a case arrives with different gain or channels — the script derives what it can
-(ADC full scale, LSB) but the physiologic ranges are constants at the top of the file.
+Every default below was chosen by measuring a recording rather than by habit, and each
+one says what it was measuring. Re-check them when a case arrives with a different gain or
+channel set: the script derives what it can from the file itself (ADC full scale, LSB), but
+the physiologic ranges are constants at the top of `clean_export.py`.
 
 **Produce both for a case** and a colleague can diff them, or start from raw and apply
 their own rules. `_raw` is bit-for-bit what the recorder wrote: the 16-bit overflow, the
