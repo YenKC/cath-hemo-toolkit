@@ -25,7 +25,7 @@ saturation, and the pre-case placeholder values are all still there.
 | file | rows | what it is |
 |---|---|---|
 | `<stem>_clean.csv` / `<stem>_raw.csv` | one per sample | `timestamp`, `t_sec`, then every channel |
-| `<stem>_{clean,raw}_trend.csv` | one per second (19 k) | HR, per-second pressure mean/min/max, per-channel validity |
+| `<stem>_{clean,raw}_trend.csv` | one per second | HR, per-second pressure mean/min/max, per-channel validity |
 | `<stem>_{clean,raw}_qc.txt` | — | the exact settings used, and what each step removed |
 
 ## Every step is a flag
@@ -41,7 +41,7 @@ saturation, and the pre-case placeholder values are all still there.
 | `--press-limit CH=LO:HI` | AO −40:300, PCW −40:150 | physiologic window, repeatable |
 | `--press-pad S` | 0.25 | seconds of post-flush ringdown dropped |
 | `--highpass HZ` / `--lowpass HZ` | off | optional band limiting (see below for why it's off) |
-| `--trend-only` | off | skip the ~620 MB full-rate CSV |
+| `--trend-only` | off | skip the full-rate CSV, which is large |
 
 The `_qc.txt` header records the exact command, so any export can be reproduced.
 
