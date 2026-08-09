@@ -87,15 +87,3 @@ Note the `.inf` clock is naive local time and the Python exporter keeps it that 
 `Data/` holds identifiable PHI: the `.inf` sidecar carries a patient name in cleartext and the waveforms are identifiable health information. `.gitignore` excludes `Data/`, every `derived/` folder, and all `.bin`/`.inf`/`.csv` files, with a single negation for `sample/SYNTH01.*`. **Keep it that way** — this repository is public.
 
 Do not paste `.inf` contents into commits, issues, artifacts, or any external service, and de-identify anything derived from a real recording before sharing it. Use `sample/SYNTH01` (from `scripts/make_sample.py`) for screenshots, demos, and bug reports.
-
-## Local development
-
-`scripts/` needs Python 3.10+ with numpy, scipy, and pandas. On this machine the `python3` first on `PATH` is system Python 3.9 with **no numpy** and will fail immediately; use a conda env instead — `~/miniforge3/envs/ai_crt` has the full stack.
-
-```
-/Users/ykc/miniforge3/envs/ai_crt/bin/python scripts/clean_export.py sample/SYNTH01
-```
-
-There is no project-local environment or dependency manifest; `uv` is installed if one is wanted.
-
-`scripts/make_sample.py` regenerates `sample/SYNTH01.{inf,bin}` — 150 s of synthetic signal carrying both traps, safe to commit and to screenshot.
