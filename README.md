@@ -91,7 +91,11 @@ Writes into `<parent>/derived/`:
 Every cleaning step is a flag, so nothing is imposed. Removed samples are written as **empty
 fields — never zeros, never interpolated** — so aggregate with `nanmean`, not `mean`.
 
-On a 5.4-hour, 519 MB recording the full export takes about 48 seconds.
+Cleaning and CSV writing are both linear in sample count. The bundled 150 s sample exports
+in under a second; a multi-hour recording takes on the order of a minute.
+
+`python scripts/validate_cleaning.py` re-derives every validation number quoted in these
+docs from the bundled sample, so nothing here has to be taken on trust.
 
 `scripts/README_cleaning.md` documents each step, the evidence behind the default, and the
 validation numbers. Read it before changing a threshold.

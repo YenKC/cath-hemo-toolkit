@@ -17,9 +17,10 @@ teaching, and screen sharing.
 
 ## Why it opens a 500 MB file instantly
 
-It never loads the whole recording. A 10 s window is 2,400 samples × 14 channels =
-269 KB, fetched as one byte-range slice. Measured on the 519 MB demo file: **99 ms to
-open**, and scrubbing to hour 4 costs the same as hour 0.
+It never loads the whole recording. A 10 s window of 14 channels at 240 Hz is 2,400
+samples per channel — a few hundred kilobytes, fetched as one byte-range slice. **Opening
+is independent of length**, and jumping to the last hour of a recording costs exactly what
+the first hour costs. A multi-hundred-megabyte file appears immediately.
 
 ## Channels come from the file, not from a template
 
@@ -101,8 +102,8 @@ exporting all of it:
   is drawn on the track with a **handle at each end that you can drag directly**, and the
   **waveform display follows the handle as you drag it**, so you can see exactly where you
   are cutting. Dragging In past Out simply swaps them.
-- **Auto-detect** finds the first and last moment any pressure transducer is live. On
-  the demo file it scans all 5.4 hours in **0.8 s** and returns 0:03:30 → 5:13:00.
+- **Auto-detect** finds the first and last moment any pressure transducer is live. It
+  samples the whole recording in about a second, however long the recording is.
 - **+ segment** adds another In/Out pair when a case needs to be split into parts. Each
   segment exports separately; click a segment's number to make it active, its time range
   to jump there, or **×** to delete it.
@@ -142,20 +143,24 @@ Every control has a hover tooltip. The ones worth spelling out:
   baseline and the J-point of a beat are both pinned, they differ by exactly zero, and an
   ST algorithm reports a confident, perfectly normal ST segment for a beat it cannot
   actually see. This voids those samples so they read as missing rather than as normal.
-  In the reference recording it removes 19% of V2 and 8% of V4 — the anterior leads, exactly the ones that
-  matter for LAD/LM.
+  The precordial leads are the usual casualties, and they are the ones that matter for
+  LAD/LM — so check how much of V1–V4 survives before trusting an anterior ST endpoint.
+  The bundled sample voids 3.4% of V2 and 1.2% of V4; a real recording with poor electrode
+  contact can lose several times that.
 - **Threshold (mV)** — measured from your file when it loads, not hardcoded. It reads
-  4.99 for the reference recording because the rail is not a round number: a ±5 mV range digitised at 12
-  bits has a most-extreme code of 2047, i.e. 2047 × 2.4414 µV = **4.9988 mV**. A threshold
-  of 5.00 would never match a single sample. The viewer samples the record, confirms the
-  extreme value repeats (11,210 times here — a rail, not a tall R wave), and sets the
-  threshold just inside it. A recorder at a different gain gets a different number
-  automatically.
+just under 5 mV on a ±5 mV recorder, because the rail is not a round number: a ±5 mV
+  range digitised at 12 bits has a most-extreme code of 2047, i.e. 2047 × 2.4414 µV =
+  **4.9988 mV**. A threshold of 5.00 would never match a single sample. The viewer samples
+  the record and confirms the extreme value *repeats* — thousands of times where there is a
+  rail, once for a tall R wave — then sets the threshold just inside it. A recorder at a
+  different gain gets a different number automatically.
 - **Pad (s)** (ECG) — same idea for saturation: the samples entering and leaving the rail
   are already distorted, so a small margin around each saturated run goes too.
 - **Remove wander** — estimates the slowly drifting baseline (breathing, electrode
   motion) with a running median and subtracts it, so beats sit on a flat line. It is
-  ST-preserving: measured over 22,994 beats, the median ST shift is 0.00 µV.
+  ST-preserving, which matters because ST is measured beat-relative: on the bundled sample
+  the median ST shift from cleaning is −1.7 µV and no beat moves by more than 100 µV.
+  Reproduce with `python scripts/validate_cleaning.py`.
 - **Median window (s)** — the width of that running median. It **must stay longer than a
   QRS** (≈0.1 s). At 0.2 s the median steps over the beat and follows the baseline; drop
   it near 0.1 s and the estimate starts tracking the QRS itself and flattens the R wave.
@@ -167,9 +172,8 @@ including `--start`/`--stop` for the selected segment. Copy it, run it once, and
 recording is exported with exactly the parameters you just eyeballed. The viewer and the
 batch script share one definition of what each setting means.
 
-For a whole multi-hour study the Python script is much faster than the in-browser export
-(48 s for the full demo file). Use the browser export for segments; use the script for
-everything.
+For a whole multi-hour study the Python script is considerably faster than the
+in-browser export. Use the browser export for segments; use the script for everything.
 
 ## Frequency filters are off on purpose
 
