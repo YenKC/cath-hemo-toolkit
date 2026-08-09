@@ -1,0 +1,1377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cath Waveform Viewer</title>
+<style>
+  :root{
+    --bg:#0b0f14; --panel:#141a22; --panel2:#1b232e; --line:#2a3542;
+    --ink:#dbe6f2; --dim:#7d8ea3; --accent:#37b6ff; --ecg:#3ce77b; --warn:#ffb020; --bad:#ff5d5d;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{background:var(--bg);color:var(--ink);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
+  /* sidebar runs from the header straight down to the readout panel */
+  #app{display:grid;grid-template-columns:334px 1fr;grid-template-rows:auto 1fr auto;height:100vh}
+
+  header{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:8px 14px;
+    background:var(--panel);border-bottom:1px solid var(--line)}
+  header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.3px;white-space:nowrap}
+  header .sp{flex:1}
+  .pill{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:3px 10px;color:var(--dim);font-size:12px;white-space:nowrap}
+  .pill b{color:var(--ink);font-weight:600}
+
+  aside{grid-row:2;grid-column:1;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;padding:12px}
+  aside h2{font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--dim);
+    margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid var(--line);display:flex;gap:6px;align-items:center}
+  aside h2:first-child{margin-top:0}
+  aside h2 .q{margin-left:auto;width:15px;height:15px;border-radius:50%;border:1px solid var(--line);
+    color:var(--dim);font-size:10px;text-align:center;line-height:13px;cursor:help;text-transform:none;letter-spacing:0}
+  .row{display:flex;align-items:center;gap:8px;margin:6px 0}
+  .row label{flex:1;color:var(--dim)}
+  .row input[type=number]{width:78px}
+  input,select,button{font:inherit;color:var(--ink);background:var(--panel2);
+    border:1px solid var(--line);border-radius:6px;padding:4px 7px}
+  input[type=checkbox]{accent-color:var(--accent);width:15px;height:15px;padding:0;flex:none}
+  input[type=range]{accent-color:var(--accent);background:none;border:none;padding:0;width:100%;position:relative;z-index:2}
+  button{cursor:pointer}
+  button:hover:not(:disabled){border-color:var(--accent)}
+  button:disabled{opacity:.4;cursor:default}
+  button.primary{background:var(--accent);color:#04121c;border-color:var(--accent);font-weight:600}
+  .btns{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  .btns button{flex:1;min-width:70px}
+
+  .chan{display:flex;align-items:center;gap:6px;padding:2px 0}
+  .chan .sw{width:9px;height:9px;border-radius:2px;flex:none}
+  .chan .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+  .chan select{padding:2px 3px;font-size:11px;width:64px}
+  .chan input[type=number]{width:62px;padding:3px 5px}
+  .hint{color:var(--dim);font-size:11px;margin:6px 0 0}
+  code{background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:4px 6px;
+    font:11px/1.5 var(--mono);word-break:break-all;display:block;margin-top:6px}
+  .seg{display:flex;align-items:center;gap:6px;padding:3px 0;font:11px/1.4 var(--mono)}
+  .seg.on{color:var(--accent)}
+  .seg .ix{width:16px;flex:none;text-align:center;border-radius:3px;background:var(--panel2);cursor:pointer}
+  .seg.on .ix{background:var(--accent);color:#04121c;font-weight:700}
+  .seg .rg{flex:1;cursor:pointer}
+  .seg button{padding:1px 6px;font-size:11px}
+
+  main{grid-row:2;grid-column:2;display:flex;flex-direction:column;overflow:hidden;background:#05080b}
+  #plot{position:relative;flex:1;overflow:hidden}
+  canvas{display:block;width:100%;height:100%}
+  #drop{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+    justify-content:center;gap:14px;text-align:center;padding:40px;background:#05080b}
+  #drop.hide{display:none}
+  #drop h3{margin:0;font-size:17px;font-weight:600}
+  #drop p{margin:0;color:var(--dim);max-width:470px}
+  #drop .box{border:1.5px dashed var(--line);border-radius:12px;padding:26px 34px}
+  #status{position:absolute;left:12px;bottom:10px;background:#0c141dee;border:1px solid var(--line);
+    border-radius:7px;padding:6px 11px;font:12px var(--mono);color:var(--accent);display:none}
+  #status.on{display:block}
+  #tip{position:absolute;background:#0c141df2;border:1px solid var(--accent);border-radius:5px;
+    padding:3px 8px;font:12px var(--mono);color:var(--ink);pointer-events:none;display:none;z-index:5}
+  #tip.on{display:block}
+
+  /* track spans only the waveform column */
+  #trackrow{display:flex;align-items:center;gap:10px;padding:5px 12px;
+    background:var(--panel);border-top:1px solid var(--line)}
+  #track{position:relative;flex:1;height:22px;display:flex;align-items:center}
+  #segs{position:absolute;left:0;right:0;top:1px;height:20px;pointer-events:none;z-index:3}
+  #segs .span{position:absolute;top:3px;height:14px;border-radius:2px}
+  #segs .h{position:absolute;top:0;width:11px;height:20px;margin-left:-5.5px;border-radius:3px;
+    cursor:ew-resize;pointer-events:auto;opacity:.85}
+  #segs .h:hover{opacity:1}
+  #segs .h::after{content:'';position:absolute;left:4px;top:5px;width:3px;height:10px;
+    border-left:1px solid #04121c;border-right:1px solid #04121c}
+  #tpos{font:12px/1 var(--mono);color:var(--dim);white-space:nowrap;min-width:20ch;text-align:right}
+
+  footer{grid-row:3;grid-column:1/3;position:relative;background:#0d1219;
+    border-top:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
+  #fgrip{position:absolute;left:0;right:0;top:0;height:7px;cursor:row-resize;z-index:4}
+  #fgrip::after{content:'';position:absolute;left:50%;top:2px;width:44px;height:3px;margin-left:-22px;
+    border-radius:2px;background:#33445a}
+  #fgrip:hover::after{background:var(--accent)}
+  #vitals{display:flex;align-items:stretch;height:100%;padding:0 8px}
+  .vital{display:flex;flex-direction:column;justify-content:center;gap:3px;
+    padding:8px 12px;border-right:1px solid #1d2632;flex:none}
+  .vital .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap}
+  .vital .v{font:600 var(--vsize,24px)/1.05 var(--mono);white-space:pre;color:var(--ink)}
+  .vital.empty .v{color:#39465a}
+
+  #modal{position:fixed;inset:0;background:#04080cd6;display:flex;align-items:center;
+    justify-content:center;z-index:20}
+  #modal.hide{display:none}
+  #modal .sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;width:470px;max-height:82vh;overflow:auto;box-shadow:0 18px 50px #000a}
+  #modal h3{margin:0 0 3px;font-size:15px}
+  #modal .sub{color:var(--dim);font-size:12px;margin-bottom:12px}
+  #modal .pick{display:flex;align-items:center;gap:8px;padding:6px 0;
+    font:12px var(--mono);border-bottom:1px solid #1d2632}
+  #modal .pick .nm{flex:1}
+  #modal .pick .tag{color:var(--accent);font-size:10px}
+  #modal .pick.off{opacity:.45}
+  #modal .opt{display:flex;align-items:flex-start;gap:9px;margin:14px 0 2px}
+  #modal .opt div{flex:1}
+  #modal .opt small{color:var(--dim);display:block;margin-top:2px;line-height:1.4}
+  #modal .est{color:var(--dim);font:12px var(--mono);margin:12px 0 0}
+  #modal .mBtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+  #modal .mBtns button{min-width:92px}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Cath Waveform Viewer</h1>
+    <span class="pill" id="caseinfo">no file loaded</span>
+    <span class="pill" id="clockinfo"></span>
+    <span class="sp"></span>
+    <label class="pill" style="cursor:pointer"><input type="checkbox" id="hideId" style="vertical-align:-2px"> hide identifiers</label>
+    <button id="pickBtn">Open .inf + .bin</button>
+    <input type="file" id="picker" multiple accept=".inf,.bin" hidden>
+  </header>
+
+  <aside>
+    <h2>Window</h2>
+    <div class="row"><label>Length</label>
+      <select id="winLen">
+        <option value="5">5 s</option><option value="10" selected>10 s</option>
+        <option value="15">15 s</option><option value="20">20 s</option>
+        <option value="30">30 s</option><option value="60">60 s</option>
+      </select></div>
+    <div class="row"><label>Play speed</label>
+      <select id="speed">
+        <option value="1">1&times; real time</option><option value="2">2&times;</option>
+        <option value="5">5&times;</option><option value="10" selected>10&times;</option>
+        <option value="30">30&times;</option><option value="60">60&times;</option>
+        <option value="300">300&times;</option>
+      </select></div>
+    <div class="row"><label>Go to (s)</label><input type="number" id="goto" step="1" value="0"></div>
+    <div class="btns"><button id="prev">&#9664;</button><button id="play">&#9654; play</button><button id="next">&#9654;</button></div>
+
+    <h2>Channels <span class="q" title="Count, names and order come from the .inf. Type is auto-detected from the label and the ADC step, and can be overridden. Scroll the wheel over any lane to change its scale.">?</span></h2>
+    <div id="chanList"></div>
+    <div class="row"><label>Overlay pressures on one axis</label><input type="checkbox" id="overlayP"></div>
+    <p class="hint">Scale = full-scale range (mV for ECG, mmHg for pressure). <b>Scroll the wheel
+       over a lane</b> to change it; the box here follows. Drag the bold line between the ECG and
+       pressure panes to give either one more height. Overlay uses the arterial channel's scale.</p>
+
+    <h2>Study range <span class="q" title="Trim the dead time before and after the case, then export only the marked span. Dragging a handle on the track scrubs the display with it.">?</span></h2>
+    <div class="btns">
+      <button id="setIn" disabled>Set In</button>
+      <button id="setOut" disabled>Set Out</button>
+      <button id="autoTrim" disabled>Auto-detect</button>
+    </div>
+    <div id="segList"></div>
+    <div class="btns">
+      <button id="addSeg" disabled>+ segment</button>
+      <button id="clrOne" disabled>Clear this</button>
+      <button id="clrAll" disabled>Clear all</button>
+    </div>
+    <p class="hint">Keys: <b>I</b> = in, <b>O</b> = out. Dragging a handle on the track moves the
+       waveform display with it, so you can see exactly where you are cutting.</p>
+
+    <h2>Pressure cleaning <span class="q" title="Applied to every channel typed as Pressure. These limits change the exported data; the lane scale only changes the picture.">?</span></h2>
+    <div class="row"><label title="Above +409.4 mmHg the recorder wraps to about -12700. This adds back the 65536-count overflow.">Unwrap 16-bit overflow</label><input type="checkbox" id="unwrap" checked></div>
+    <div class="row"><label title="Samples outside this window are voided in the exported data.">Lower limit</label><input type="number" id="pLo" value="-40" min="-500" max="500" step="5"></div>
+    <div class="row"><label>Upper limit</label><input type="number" id="pHi" value="300" min="-500" max="1000" step="5"></div>
+    <div class="row"><label title="A flush leaves the transducer ringing after the spike itself is back in range. This voids that tail too.">Ringdown pad (s)</label><input type="number" id="pPad" value="0.25" step="0.05" min="0"></div>
+    <p class="hint"><b>These limits cut data.</b> Samples outside them are voided in the export.
+       The lane scale below the channel list only changes the drawing.</p>
+
+    <h2>ECG cleaning</h2>
+    <div class="row"><label title="Samples at the ADC rail carry no information. Unmasked, a railed PR baseline and a railed J-point differ by zero and fake a normal ST segment.">Mask saturation</label><input type="checkbox" id="satOn" checked></div>
+    <div class="row"><label>Threshold (mV)</label><input type="number" id="satThr" value="4.99" step="0.01"></div>
+    <div class="row"><label title="Also void this many seconds either side of a saturated run.">Pad (s)</label><input type="number" id="satPad" value="0.012" step="0.004" min="0"></div>
+    <div class="row"><label title="Removes slow baseline drift from breathing and electrode motion without touching the ST segment.">Remove wander</label><input type="checkbox" id="baseOn" checked></div>
+    <div class="row"><label title="Width of the running median used to estimate the drifting baseline. Must stay longer than a QRS (about 0.1 s).">Median window (s)</label><input type="number" id="baseWin" value="0.2" step="0.05" min="0.05"></div>
+    <p class="hint"><b>Remove wander</b> subtracts a running-median estimate of the drifting
+       baseline. <b>Median window</b> must stay longer than a QRS (&#8776;0.1 s) or it starts
+       tracking the beat and flattens the R wave.</p>
+
+    <h2>Frequency</h2>
+    <div class="row"><label>High-pass (Hz)</label><input type="number" id="hp" value="" step="0.05" min="0" placeholder="off"></div>
+    <div class="row"><label>Low-pass (Hz)</label><input type="number" id="lp" value="" step="1" min="1" placeholder="off"></div>
+    <p class="hint">Off by default: this recorder has no mains peak and no power above 40 Hz.</p>
+
+    <h2>Export</h2>
+    <div class="btns">
+      <button id="expWin">Window &rarr; CSV</button>
+      <button id="expWinRaw">Window (raw) &rarr; CSV</button>
+    </div>
+    <div class="btns">
+      <button id="expSeg" disabled>Segments &rarr; CSV&hellip;</button>
+      <button id="expSegRaw" disabled>Segments (raw) &rarr; CSV&hellip;</button>
+    </div>
+    <div class="btns">
+      <button id="expAll" disabled>Whole study &rarr; CSV</button>
+      <button id="expAllRaw" disabled>Whole study (raw) &rarr; CSV</button>
+    </div>
+    <p class="hint">Same settings, whole file, much faster:</p>
+    <code id="cli">clean_export.py &lt;stem&gt;</code>
+    <div class="btns"><button id="copyCli">Copy command</button></div>
+  </aside>
+
+  <main>
+    <div id="plot">
+      <canvas id="cv"></canvas>
+      <div id="tip"></div>
+      <div id="status"></div>
+      <div id="drop">
+        <div class="box">
+          <h3>Open a recording</h3>
+          <p>Select the <b>.inf</b> and <b>.bin</b> for a case (both at once), or drag them here.</p>
+          <p style="margin-top:12px"><button class="primary" id="pickBtn2">Choose files</button></p>
+        </div>
+        <p>Nothing is uploaded. The file is read straight off your disk in this browser tab,
+           a few seconds at a time, so a 500&nbsp;MB recording opens instantly.</p>
+      </div>
+    </div>
+    <div id="trackrow">
+      <div id="track"><div id="segs"></div><input type="range" id="scrub" min="0" max="1000" value="0"></div>
+      <span id="tpos">--:--:--</span>
+    </div>
+  </main>
+
+  <footer id="foot"><div id="fgrip" title="drag to resize the readout panel"></div><div id="vitals"></div></footer>
+</div>
+
+<div id="modal" class="hide">
+  <div class="sheet">
+    <h3 id="mTitle">Export segments</h3>
+    <div class="sub" id="mSub"></div>
+    <div id="mList"></div>
+    <div class="opt">
+      <input type="checkbox" id="mCombine">
+      <div>
+        <label for="mCombine">Combine into a single CSV file</label>
+        <small>Adds a <b>segment</b> column so every row stays attributable. Leave unchecked
+               to get one file per segment.</small>
+      </div>
+    </div>
+    <div class="est" id="mEst"></div>
+    <div class="mBtns">
+      <button id="mCancel">Cancel</button>
+      <button id="mGo" class="primary">Export</button>
+    </div>
+  </div>
+</div>
+
+<script>
+'use strict';
+// ---------------------------------------------------------------- state ----
+const S = {
+  inf:null, bin:null, meta:{}, labels:[], n:0, c:0, fs:240, start:null,
+  t0:0, win:10, playing:false, speed:10, lastTick:0, split:0.58,
+  data:null, vis:{}, scale:{}, type:{}, colour:{},
+  segs:[{a:null,b:null}], active:0,
+  busy:false, pending:false, exporting:false, layout:null, drag:null, footH:78
+};
+const ECG_NAMES = new Set(['I','II','III','AVR','AVL','AVF','V1','V2','V3','V4','V5','V6',
+                           'V3R','V4R','V7','V8','V9']);
+const NON_SIGNAL = /^(SPO2|SAO2|SAT|RESP|RR|CO2|ETCO2|TEMP|HR|BIS|NBP|NIBP|BSA)$/i;
+const ARTERIAL = /^(AO|AOP|FA|ART|BP)/i;
+const PRESS_COLOURS = ['#ff4d4d','#4da3ff','#ff5cf0','#ffd24d','#ff9a3d','#46e0d0','#b58cff','#8fd14f'];
+const MONITOR = [
+  {key:'SpO2', re:/^(SPO2|SAO2|SAT)$/i, w:4,  fmt:v => v.toFixed(0)+'%'},
+  {key:'NBP',  re:/^(NBP|NIBP)$/i,      w:11, fmt:v => v.toFixed(0)},
+  {key:'RR',   re:/^(RR|RESP)$/i,       w:3,  fmt:v => v.toFixed(0)},
+  {key:'Temp', re:/^(TEMP)$/i,          w:5,  fmt:v => v.toFixed(1)},
+];
+// scale-box limits: fine enough to land on the defaults, wide enough for any case
+const SCALE_RULES = {ecg:{min:0.1, max:10, step:0.1}, pressure:{min:-20, max:500, step:5},
+                     other:{min:1, max:1000, step:1}};
+const NEG_HEADROOM = 0.12;      // fraction of full scale drawn below the 0 line
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => v<a?a:v>b?b:v;
+const getCSS = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const isECG = lab => S.type[lab] === 'ecg';
+const dur = () => S.n / S.fs;
+const stemName = () => S.inf ? S.inf.name.replace(/\.inf$/i,'') : 'case';
+const MONO = 'ui-monospace,Menlo,monospace';
+
+function status(msg){
+  const el = $('status');
+  if (!msg){ el.classList.remove('on'); return; }
+  el.textContent = msg; el.classList.add('on');
+}
+let tipTimer = 0;
+function tip(msg, x, y, ms){
+  const el = $('tip');
+  clearTimeout(tipTimer);
+  if (!msg){ el.classList.remove('on'); return; }
+  el.textContent = msg; el.style.left = (x+14)+'px'; el.style.top = (y-10)+'px'; el.classList.add('on');
+  if (ms) tipTimer = setTimeout(() => el.classList.remove('on'), ms);   // backstop
+}
+function quantiseScale(lab, v){
+  const r = SCALE_RULES[S.type[lab]] || SCALE_RULES.pressure;
+  const q = Math.round(v/r.step)*r.step;
+  return clamp(+q.toFixed(2), Math.max(r.step, r.min > 0 ? r.min : r.step), r.max);
+}
+
+// ----------------------------------------------------------- .inf parse ----
+function parseInf(text){
+  const meta = {}, labels = [];
+  for (const line of text.split(/\r?\n/)){
+    const m = line.match(/^\s*(\d+)\s+(\S+)\s*$/);
+    if (m){ labels.push(m[2]); continue; }
+    const i = line.indexOf('=');
+    if (i > 0) meta[line.slice(0,i).trim()] = line.slice(i+1).trim();
+  }
+  return {meta, labels};
+}
+function parseClock(v){
+  const m = (v||'').trim().match(/^(\d+)\/(\d+)\/(\d+)\s+(\d+):(\d+):(\d+)\s*([AP]M)?$/i);
+  if (!m) return null;
+  let h = +m[4]; const ap = (m[7]||'').toUpperCase();
+  if (ap === 'PM' && h !== 12) h += 12;
+  if (ap === 'AM' && h === 12) h = 0;
+  return new Date(+m[3], +m[1]-1, +m[2], h, +m[5], +m[6]);
+}
+
+// ------------------------------------------------- channel classification --
+async function probeTypes(){
+  const {n, c, fs} = S;
+  const at = Math.floor(n*0.4), len = Math.min(10*fs, n-at);
+  const v = new Float64Array(await S.bin.slice(at*c*8, (at+len)*c*8).arrayBuffer());
+  for (let j=0;j<c;j++){
+    const lab = S.labels[j];
+    if (ECG_NAMES.has(lab.toUpperCase())){ S.type[lab] = 'ecg'; continue; }
+    if (NON_SIGNAL.test(lab)){ S.type[lab] = 'other'; continue; }
+    let mn = Infinity, mx = -Infinity, prev = null;
+    const steps = new Set();
+    for (let i=0;i<len;i++){
+      const x = v[i*c + j];
+      if (!Number.isFinite(x)) continue;
+      if (x < mn) mn = x; if (x > mx) mx = x;
+      if (prev !== null){ const d = Math.abs(x-prev); if (d > 1e-9) steps.add(+d.toFixed(6)); }
+      prev = x;
+    }
+    const lsb = steps.size ? Math.min(...steps) : 1;
+    S.type[lab] = (Math.max(Math.abs(mn), Math.abs(mx)) <= 8 && lsb < 0.05) ? 'ecg' : 'pressure';
+  }
+  recolour();
+}
+// The ADC rail is not a round number: with a +/-5 mV range and 12 bits the most extreme
+// code is 2047, i.e. 4.9988 mV, so a threshold of 5.00 would never match anything. Find
+// the real limit from the data instead of hardcoding it -- a recorder set to a different
+// gain then works without anyone having to know this.
+async function probeEcgRail(){
+  const {n, c, fs} = S;
+  const idx = S.labels.map((l,j) => S.type[l]==='ecg' ? j : -1).filter(j => j>=0);
+  if (!idx.length) return null;
+  const probe = Math.round(0.5*fs);
+  const stepS = Math.max(20, (n/fs)/240);          // ~240 samples spread over the record
+  let mx = 0, hits = 0;
+  for (let t=0; Math.round(t*fs)+probe <= n; t += stepS){
+    const i0 = Math.round(t*fs);
+    const v = new Float64Array(await S.bin.slice(i0*c*8, (i0+probe)*c*8).arrayBuffer());
+    for (let i=0;i<probe;i++) for (const j of idx){
+      const a = Math.abs(v[i*c + j]);
+      if (a > mx + 1e-9){ mx = a; hits = 1; }
+      else if (Math.abs(a - mx) < 1e-9) hits++;
+    }
+  }
+  // one sample at the extreme is a tall R wave; thousands of them is a rail
+  return {mx, hits, railed: hits >= 20};
+}
+
+const PRESS_PREF = [
+  [ARTERIAL,           '#ff4d4d'],
+  [/(PCW|PAW|WEDGE)/i, '#4da3ff'],
+  [/^LV/i,             '#ff5cf0'],
+  [/^(PA|RV|RA|CVP)/i, '#ffd24d'],
+];
+function recolour(){
+  const used = new Set();
+  for (const lab of S.labels){
+    if (S.type[lab] === 'ecg'){ S.colour[lab] = getCSS('--ecg'); continue; }
+    if (S.type[lab] === 'other'){ S.colour[lab] = '#8899aa'; continue; }
+    let c = null;
+    for (const [re, col] of PRESS_PREF) if (re.test(lab) && !used.has(col)){ c = col; break; }
+    if (!c) c = PRESS_COLOURS.find(x => !used.has(x)) || PRESS_COLOURS[used.size % PRESS_COLOURS.length];
+    used.add(c); S.colour[lab] = c;
+  }
+}
+function defaultScale(lab){
+  if (S.type[lab] === 'ecg') return 2;
+  if (S.type[lab] === 'other') return 100;
+  if (/PCW|PAW|WEDGE|^RA\b|CVP/i.test(lab)) return 40;
+  if (/^PA|^RV/i.test(lab)) return 60;
+  return 200;
+}
+// the shared axis in overlay mode belongs to the arterial line
+function overlayRef(prsLabs){
+  return prsLabs.find(l => ARTERIAL.test(l))
+      || prsLabs.reduce((a,b) => S.scale[b] > S.scale[a] ? b : a, prsLabs[0]);
+}
+
+// ------------------------------------------------------------ file load ----
+async function loadFiles(list){
+  let inf=null, bin=null;
+  for (const f of list){
+    if (/\.inf$/i.test(f.name)) inf = f;
+    if (/\.bin$/i.test(f.name)) bin = f;
+  }
+  if (!inf || !bin){ alert('Select both the .inf and the .bin for the case.'); return; }
+
+  const {meta, labels} = parseInf(await inf.text());
+  const n = parseInt(meta['Points for Each Channel'], 10);
+  const c = parseInt(meta['Number of Channel'], 10);
+  const fs = parseInt((meta['Data Sampling Rate']||'240').match(/\d+/)[0], 10);
+  if (!n || !c){ alert('.inf is missing "Points for Each Channel" / "Number of Channel".'); return; }
+  if (labels.length !== c){ alert(`.inf lists ${labels.length} labels but declares ${c} channels.`); return; }
+  if (bin.size !== n*c*8){
+    alert(`.bin is ${bin.size} bytes but the header implies ${n*c*8} (${n} x ${c} x 8).\n`
+        + `Refusing to guess the layout — is this the matching .bin?`);
+    return;
+  }
+
+  Object.assign(S, {inf, bin, meta, labels, n, c, fs,
+                    start:parseClock(meta['Start Time'] || meta['Date']),
+                    t0:0, segs:[{a:null,b:null}], active:0});
+  S.vis = {}; S.scale = {}; S.type = {}; S.colour = {};
+  status('reading channel layout...');
+  await probeTypes();
+  for (const l of labels){ S.vis[l] = S.type[l] !== 'other'; S.scale[l] = defaultScale(l); }
+
+  status('measuring the ECG range...');
+  const rail = await probeEcgRail();
+  if (rail){
+    // just inside the rail if there is one; just outside the peaks if there is not
+    $('satThr').value = rail.railed ? (Math.round(rail.mx*0.998*100)/100)
+                                    : (Math.ceil((rail.mx+0.05)*100)/100);
+    S.railInfo = rail;
+  }
+  status('');
+
+  buildChannelList(); renderSegs();
+  $('drop').classList.add('hide');
+  for (const id of ['setIn','setOut','autoTrim','addSeg','clrOne','clrAll','expAll','expAllRaw'])
+    $(id).disabled = false;
+  $('scrub').max = Math.max(0, Math.floor(dur() - S.win));
+  showCaseInfo();
+  await refresh();
+}
+
+function showCaseInfo(){
+  const hide = $('hideId').checked;
+  const who = hide ? '(identifiers hidden)'
+    : [S.meta['Patient'], S.meta['Description']].filter(Boolean).join(' · ') || '(no name in .inf)';
+  const nE = S.labels.filter(l => S.type[l]==='ecg').length;
+  const nP = S.labels.filter(l => S.type[l]==='pressure').length;
+  $('caseinfo').innerHTML = `<b>${esc(who)}</b> — ${S.c} ch (${nE} ECG, ${nP} pressure) @ ${S.fs} Hz, ${(dur()/3600).toFixed(2)} h`;
+  let msg = '';
+  const stop = parseClock(S.meta['Stop Time']);
+  if (S.start && stop){
+    const span = (stop - S.start)/1000, d = span - dur();
+    if (Math.abs(d) > 2)
+      msg = `<span style="color:var(--warn)">header span ${fmtDur(span)} vs samples ${fmtDur(dur())} (${d>0?'+':''}${d.toFixed(0)} s) — wall clock unverified</span>`;
+  }
+  $('clockinfo').innerHTML = msg || (S.start ? 'start ' + S.start.toLocaleString() : '');
+}
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
+const fmtDur = s => `${Math.floor(s/3600)}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`;
+
+function buildChannelList(){
+  const box = $('chanList'); box.innerHTML = '';
+  for (const lab of S.labels){
+    const r = SCALE_RULES[S.type[lab]] || SCALE_RULES.pressure;
+    const d = document.createElement('div'); d.className = 'chan';
+    d.innerHTML = `<input type="checkbox" ${S.vis[lab]?'checked':''}>
+      <i class="sw" style="background:${S.colour[lab]}"></i><span class="nm" title="${esc(lab)}">${esc(lab)}</span>
+      <select><option value="ecg">ECG</option><option value="pressure">Press</option><option value="other">Other</option></select>
+      <input type="number" value="${S.scale[lab]}" min="${r.min}" max="${r.max}" step="${r.step}">`;
+    d.querySelector('select').value = S.type[lab];
+    d.querySelector('input[type=checkbox]').onchange = e => { S.vis[lab] = e.target.checked; draw(); updateVitals(); };
+    d.querySelector('select').onchange = e => {
+      S.type[lab] = e.target.value; S.scale[lab] = defaultScale(lab);
+      recolour(); buildChannelList(); refresh();
+    };
+    d.querySelector('input[type=number]').onchange = e => {
+      S.scale[lab] = quantiseScale(lab, +e.target.value || 1);
+      e.target.value = S.scale[lab];
+      draw();
+    };
+    box.appendChild(d);
+  }
+}
+function syncScaleInputs(){
+  const rows = $('chanList').children;
+  S.labels.forEach((lab,i) => {
+    const inp = rows[i] && rows[i].querySelector('input[type=number]');
+    if (inp) inp.value = S.scale[lab];
+  });
+}
+
+// ------------------------------------------------------- read and clean ----
+function cfgFromUI(){
+  return {
+    unwrap:$('unwrap').checked, pLo:+$('pLo').value, pHi:+$('pHi').value, pPad:+$('pPad').value,
+    satOn:$('satOn').checked, satThr:+$('satThr').value, satPad:+$('satPad').value,
+    baseOn:$('baseOn').checked, baseWin:+$('baseWin').value,
+    hp:parseFloat($('hp').value), lp:parseFloat($('lp').value)
+  };
+}
+async function readRange(p0, p1){
+  const view = new Float64Array(await S.bin.slice(p0*S.c*8, p1*S.c*8).arrayBuffer());
+  const rows = p1-p0, out = [];
+  for (let j=0;j<S.c;j++){
+    const a = new Float64Array(rows);
+    for (let i=0;i<rows;i++) a[i] = view[i*S.c + j];
+    out.push(a);
+  }
+  return out;
+}
+function dilate(mask, k){
+  if (k<=0) return mask;
+  const out = new Uint8Array(mask.length);
+  for (let i=0;i<mask.length;i++){
+    if (!mask[i]) continue;
+    const a = Math.max(0,i-k), b = Math.min(mask.length-1,i+k);
+    for (let j=a;j<=b;j++) out[j] = 1;
+  }
+  return out;
+}
+function onePoleHP(x, fs, fc){
+  const dt=1/fs, rc=1/(2*Math.PI*fc), a=rc/(rc+dt);
+  const f=new Float64Array(x.length); let py=0, px=x[0]||0;
+  for (let i=0;i<x.length;i++){ const v=Number.isFinite(x[i])?x[i]:px; py=a*(py+v-px); px=v; f[i]=py; }
+  let qy=0, qx=f[f.length-1]||0; const g=new Float64Array(x.length);
+  for (let i=x.length-1;i>=0;i--){ const v=f[i]; qy=a*(qy+v-qx); qx=v; g[i]=qy; }
+  for (let i=0;i<x.length;i++) if (!Number.isFinite(x[i])) g[i]=NaN;
+  return g;
+}
+function onePoleLP(x, fs, fc){
+  const dt=1/fs, rc=1/(2*Math.PI*fc), a=dt/(rc+dt);
+  const f=new Float64Array(x.length); let y=Number.isFinite(x[0])?x[0]:0;
+  for (let i=0;i<x.length;i++){ const v=Number.isFinite(x[i])?x[i]:y; y+=a*(v-y); f[i]=y; }
+  let z=f[f.length-1]; const g=new Float64Array(x.length);
+  for (let i=x.length-1;i>=0;i--){ z+=a*(f[i]-z); g[i]=z; }
+  for (let i=0;i<x.length;i++) if (!Number.isFinite(x[i])) g[i]=NaN;
+  return g;
+}
+function medianOf(arr){
+  const v = arr.filter(Number.isFinite).sort((a,b)=>a-b);
+  return v.length ? v[v.length>>1] : NaN;
+}
+function cleanChannel(lab, src, fs, cfg){
+  const kind = S.type[lab] || 'pressure';
+  if (kind === 'other') return Float64Array.from(src);
+  const x = Float64Array.from(src);
+  if (kind === 'ecg'){
+    if (cfg.satOn && cfg.satThr > 0){
+      const m = new Uint8Array(x.length);
+      for (let i=0;i<x.length;i++) if (Math.abs(x[i]) >= cfg.satThr) m[i] = 1;
+      const d = dilate(m, Math.round(cfg.satPad*fs));
+      for (let i=0;i<x.length;i++) if (d[i]) x[i] = NaN;
+    }
+    if (cfg.baseOn && cfg.baseWin > 0){
+      const w = Math.max(1, Math.round(cfg.baseWin*fs));
+      const nb = Math.floor(x.length/w);
+      if (nb >= 2){
+        const m1 = new Float64Array(nb);
+        for (let b=0;b<nb;b++) m1[b] = medianOf(Array.from(x.subarray(b*w,(b+1)*w)));
+        let last = NaN;
+        for (let b=0;b<nb;b++){ if (Number.isFinite(m1[b])) last = m1[b]; else m1[b] = last; }
+        for (let b=nb-1;b>=0;b--) if (!Number.isFinite(m1[b]) && b<nb-1) m1[b] = m1[b+1];
+        const m2 = new Float64Array(nb);
+        for (let b=0;b<nb;b++) m2[b] = medianOf([m1[Math.max(0,b-1)], m1[b], m1[Math.min(nb-1,b+1)]]);
+        for (let i=0;i<x.length;i++){
+          const p=(i-w/2)/w, b0=Math.floor(p);
+          const lo=clamp(b0,0,nb-1), hi=clamp(b0+1,0,nb-1), f=clamp(p-b0,0,1);
+          const base = m2[lo]*(1-f) + m2[hi]*f;
+          if (Number.isFinite(base)) x[i] -= base;
+        }
+      }
+    }
+  } else {
+    if (cfg.unwrap) for (let i=0;i<x.length;i++) if (x[i] < -1000) x[i] += 65536*0.2;
+    const m = new Uint8Array(x.length); let any = false;
+    for (let i=0;i<x.length;i++) if (!(x[i] >= cfg.pLo && x[i] <= cfg.pHi)){ m[i]=1; any=true; }
+    if (any){
+      const d = dilate(m, Math.round(cfg.pPad*fs));
+      for (let i=0;i<x.length;i++) if (d[i]) x[i] = NaN;
+    }
+  }
+  let y = x;
+  if (Number.isFinite(cfg.hp) && cfg.hp > 0) y = onePoleHP(y, fs, cfg.hp);
+  if (Number.isFinite(cfg.lp) && cfg.lp > 0) y = onePoleLP(y, fs, cfg.lp);
+  return y;
+}
+async function refresh(){
+  if (!S.bin || S.exporting) return;
+  if (S.busy){ S.pending = true; return; }
+  S.busy = true;
+  try{
+    const fs = S.fs;
+    const i0 = clamp(Math.round(S.t0*fs), 0, Math.max(0, S.n-1));
+    const len = clamp(Math.round(S.win*fs), 1, S.n - i0);
+    const p0 = Math.max(0, i0-fs), p1 = Math.min(S.n, i0+len+fs);
+    const raw = await readRange(p0, p1);
+    const cfg = cfgFromUI();
+    const chans = {}, rawByLab = {};
+    S.labels.forEach((lab, j) => { rawByLab[lab] = raw[j]; chans[lab] = cleanChannel(lab, raw[j], fs, cfg); });
+    S.data = {i0, len, off:i0-p0, chans, raw:rawByLab};
+    draw(); updateVitals(); updateCli();
+  } catch(e){
+    console.error(e); status('read failed: ' + e.message);
+  } finally {
+    S.busy = false;
+    if (S.pending){ S.pending = false; refresh(); }
+  }
+}
+
+// ---------------------------------------------------------------- draw ----
+const cv = $('cv'), ctx = cv.getContext('2d');
+function syncCanvas(){
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(cv.clientWidth*dpr));
+  const h = Math.max(1, Math.round(cv.clientHeight*dpr));
+  if (cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+}
+function resize(){ draw(); }
+window.addEventListener('resize', resize);
+
+function draw(){
+  syncCanvas();
+  const W = cv.clientWidth, H = cv.clientHeight;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle = '#05080b'; ctx.fillRect(0,0,W,H);
+  S.layout = null;
+  if (!S.data) return;
+
+  const ecgLabs = S.labels.filter(l => isECG(l) && S.vis[l]);
+  const prsLabs = S.labels.filter(l => !isECG(l) && S.vis[l]);
+  const padL=56, padR=12, padT=10, padB=22, divH=26;
+  const plotW = W-padL-padR;
+  const hasE = ecgLabs.length>0, hasP = prsLabs.length>0;
+  if (!hasE && !hasP) return;
+  const totalH = H-padT-padB-(hasP&&hasE?divH:0);
+  const ecgH = hasE ? (hasP ? Math.round(totalH*S.split) : totalH) : 0;
+  const prsH = hasP ? totalH-ecgH : 0;
+  const divY = padT+ecgH+divH/2;
+  const prsY = padT+ecgH+(hasP&&hasE?divH:0);
+  const L = {padL, plotW, padT, ecgH, prsY, prsH, divY:(hasE&&hasP?divY:null), lanes:[]};
+
+  drawTimeGrid(padL, padT, plotW, H-padT-padB);
+
+  if (hasE){
+    const laneH = ecgH/ecgLabs.length;
+    ecgLabs.forEach((lab,k) => {
+      const yMid = padT+laneH*(k+0.5), half = laneH*0.46;
+      ctx.strokeStyle='#16202b'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.moveTo(padL, Math.round(yMid)+.5); ctx.lineTo(padL+plotW, Math.round(yMid)+.5); ctx.stroke();
+      plotTrace(S.data.chans[lab], padL, plotW, yMid, half, S.scale[lab]/2, S.colour[lab]);
+      ctx.fillStyle='#9fb2c6'; ctx.font='600 11px '+MONO; ctx.textAlign='right';
+      ctx.fillText(lab, padL-8, yMid-1);
+      ctx.fillStyle='#48596b'; ctx.font='9px '+MONO;
+      ctx.fillText(S.scale[lab]+' mV', padL-8, yMid+10);
+      L.lanes.push({lab, y:yMid-laneH/2, h:laneH});
+    });
+  }
+
+  if (hasE && hasP) drawDivider(padL, divY, plotW);
+
+  if (hasP){
+    if ($('overlayP').checked){
+      const ref = overlayRef(prsLabs), top = S.scale[ref];
+      drawPressureAxis(padL, prsY, plotW, prsH, top);
+      prsLabs.forEach(lab => plotPressure(S.data.chans[lab], padL, plotW, prsY, prsH, top, S.colour[lab]));
+      let lx = padL+8;
+      prsLabs.forEach(lab => {
+        ctx.fillStyle=S.colour[lab]; ctx.font='600 12px '+MONO; ctx.textAlign='left';
+        ctx.fillText(lab, lx, prsY+14); lx += ctx.measureText(lab).width+14;
+      });
+      ctx.fillStyle='#5c6f84'; ctx.font='10px '+MONO;
+      ctx.fillText(`axis = ${ref}`, lx+6, prsY+14);
+      // the whole pane scrolls the reference channel, so the wheel keeps working here
+      L.lanes.push({lab:ref, y:prsY, h:prsH});
+    } else {
+      const laneGap = 26, laneH = prsH/prsLabs.length;
+      prsLabs.forEach((lab,k) => {
+        const ly = prsY+laneH*k, lh = laneH-laneGap, top = S.scale[lab];
+        drawPressureAxis(padL, ly, plotW, lh, top);
+        plotPressure(S.data.chans[lab], padL, plotW, ly, lh, top, S.colour[lab]);
+        ctx.fillStyle=S.colour[lab]; ctx.font='600 12px '+MONO; ctx.textAlign='left';
+        ctx.fillText(lab, padL+8, ly+14);
+        L.lanes.push({lab, y:ly, h:laneH});
+      });
+    }
+  }
+  S.layout = L;
+}
+
+// the only draggable thing on the chart, so it is drawn boldly
+function drawDivider(x, y, w){
+  const py = Math.round(y)+.5;
+  const hot = S.drag && S.drag.kind==='split';
+  ctx.strokeStyle = hot ? getCSS('--accent') : '#5a7189';
+  ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.moveTo(x, py); ctx.lineTo(x+w, py); ctx.stroke();
+  ctx.lineWidth = 1;
+  // grip marks only -- a caption here would sit on top of the line and be unreadable
+  const gx = x+w/2;
+  ctx.fillStyle = hot ? getCSS('--accent') : '#7d93aa';
+  for (let i=-2;i<=2;i++) ctx.fillRect(gx+i*9-3, Math.round(y)-4, 6, 8);
+}
+function drawTimeGrid(x,y,w,h){
+  const secs = S.win;
+  ctx.save(); ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
+  ctx.strokeStyle='#101922'; ctx.lineWidth=1;
+  for (let s=0;s<=secs;s++){
+    const px = Math.round(x+w*s/secs)+.5;
+    ctx.globalAlpha = s%5===0?1:.55;
+    ctx.beginPath(); ctx.moveTo(px,y); ctx.lineTo(px,y+h); ctx.stroke();
+  }
+  ctx.globalAlpha=1; ctx.restore();
+  ctx.fillStyle='#5c6f84'; ctx.font='10px '+MONO; ctx.textAlign='center';
+  for (let s=0;s<=secs;s+=Math.max(1,Math.round(secs/10)))
+    ctx.fillText(fmtDur(S.t0+s), x+w*s/secs, y+h+14);
+}
+function plotTrace(arr,x,w,yMid,half,halfRange,colour){
+  if (!arr) return;
+  const {off,len} = S.data;
+  ctx.strokeStyle=colour; ctx.lineWidth=1.15; ctx.lineJoin='round';
+  ctx.beginPath(); let pen=false;
+  const step = Math.max(1, Math.floor(len/(w*2)));
+  for (let i=0;i<len;i+=step){
+    const v = arr[off+i];
+    if (!Number.isFinite(v)){ pen=false; continue; }
+    const px = x+w*i/len, py = yMid - clamp(v/halfRange,-1.15,1.15)*half;
+    if (pen) ctx.lineTo(px,py); else { ctx.moveTo(px,py); pen=true; }
+  }
+  ctx.stroke();
+}
+// baseline stays at 0; a little room is kept below it so negative wedge dips stay visible
+function pressY(v, y, h, top){
+  const lo = -NEG_HEADROOM*top;
+  return y + h*(1 - clamp((v-lo)/(top-lo), -0.02, 1.02));
+}
+function drawPressureAxis(x,y,w,h,top){
+  const stepv = top<=60?20:top<=120?40:top<=220?50:100;
+  ctx.font='10px '+MONO; ctx.textAlign='right';
+  for (let v=stepv;v<top;v+=stepv){
+    const py = Math.round(pressY(v,y,h,top))+.5;
+    ctx.strokeStyle='#16202b'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,py); ctx.lineTo(x+w,py); ctx.stroke();
+    ctx.fillStyle='#5c6f84'; ctx.fillText(String(v), x-8, py+3);
+  }
+  const pz = Math.round(pressY(0,y,h,top))+.5;              // the 0 baseline
+  ctx.strokeStyle='#26364a'; ctx.lineWidth=1;
+  ctx.beginPath(); ctx.moveTo(x,pz); ctx.lineTo(x+w,pz); ctx.stroke();
+  ctx.fillStyle='#5c6f84'; ctx.fillText('0', x-8, pz+3);
+  const pt = Math.round(pressY(top,y,h,top))+.5;            // the ceiling
+  ctx.strokeStyle='#31445c';
+  ctx.beginPath(); ctx.moveTo(x,pt); ctx.lineTo(x+w,pt); ctx.stroke();
+  ctx.fillStyle='#9fb2c6'; ctx.font='600 11px '+MONO;
+  ctx.fillText(String(top), x-8, pt+4);
+}
+function plotPressure(arr,x,w,y,h,top,colour){
+  if (!arr) return;
+  const {off,len} = S.data;
+  ctx.strokeStyle=colour; ctx.lineWidth=1.3; ctx.lineJoin='round';
+  ctx.beginPath(); let pen=false;
+  const step = Math.max(1, Math.floor(len/(w*2)));
+  for (let i=0;i<len;i+=step){
+    const v = arr[off+i];
+    if (!Number.isFinite(v)){ pen=false; continue; }
+    const px = x+w*i/len, py = pressY(v,y,h,top);
+    if (pen) ctx.lineTo(px,py); else { ctx.moveTo(px,py); pen=true; }
+  }
+  ctx.stroke();
+}
+
+// -------------------------------------- chart interaction: divider + wheel --
+function overDivider(my){
+  const L = S.layout;
+  return L && L.divY != null && Math.abs(my - L.divY) <= 7;
+}
+function laneAt(my){
+  const L = S.layout; if (!L) return null;
+  return L.lanes.find(l => my >= l.y-3 && my <= l.y+l.h+3) || null;
+}
+$('plot').addEventListener('pointermove', e => {
+  const r = cv.getBoundingClientRect(), mx = e.clientX-r.left, my = e.clientY-r.top;
+  if (S.drag && S.drag.kind === 'split'){
+    const L = S.layout;
+    const span = cv.clientHeight - L.padT - 22 - 26;
+    S.split = clamp((my - L.padT)/span, 0.12, 0.88);
+    draw();
+    return;
+  }
+  // any movement clears the wheel readout; only the divider gets a hover hint
+  const onDiv = overDivider(my);
+  cv.style.cursor = onDiv ? 'row-resize' : 'default';
+  tip(onDiv ? 'drag to resize the panes' : null, mx, my);
+});
+$('plot').addEventListener('pointerleave', () => tip(null));
+$('plot').addEventListener('pointerdown', e => {
+  const r = cv.getBoundingClientRect();
+  if (!overDivider(e.clientY-r.top)) return;
+  e.preventDefault();
+  S.drag = {kind:'split'};
+  const up = () => { S.drag = null; tip(null); draw();
+    document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointerup', up);
+});
+// one gesture for every channel type, ECG included
+cv.addEventListener('wheel', e => {
+  const r = cv.getBoundingClientRect();
+  const ln = laneAt(e.clientY-r.top);
+  if (!ln) return;
+  e.preventDefault();
+  const rule = SCALE_RULES[S.type[ln.lab]] || SCALE_RULES.pressure;
+  const f = e.deltaY > 0 ? 1.15 : 1/1.15;
+  const next = quantiseScale(ln.lab, Math.max(rule.step, S.scale[ln.lab]*f));
+  if (next === S.scale[ln.lab])                       // never stall on the rounding grid
+    S.scale[ln.lab] = quantiseScale(ln.lab, S.scale[ln.lab] + (e.deltaY>0 ? rule.step : -rule.step));
+  else S.scale[ln.lab] = next;
+  syncScaleInputs(); draw();
+  const unit = S.type[ln.lab]==='ecg' ? 'mV' : 'mmHg';
+  tip(`${ln.lab} scale ${S.scale[ln.lab]} ${unit}`, e.clientX-r.left, e.clientY-r.top, 1200);
+}, {passive:false});
+
+// -------------------------------------------------------------- vitals ----
+function windowSlice(lab){
+  const d = S.data; if (!d || !d.chans[lab]) return [];
+  return Array.from(d.chans[lab].subarray(d.off, d.off+d.len));
+}
+function cell(key, value, widthCh, colour, empty){
+  const d = document.createElement('div');
+  d.className = 'vital' + (empty ? ' empty' : '');
+  d.innerHTML = `<span class="k">${esc(key)}</span>`
+              + `<span class="v" style="color:${empty?'':colour};min-width:${widthCh}ch">`
+              + `${esc(String(value).padStart(widthCh,' '))}</span>`;
+  return d;
+}
+function updateVitals(){
+  const box = $('vitals'); box.innerHTML = '';
+  if (!S.data) return;
+  const lead = ['II','I','V5','V2'].map(p =>
+                 S.labels.find(l => isECG(l) && S.vis[l] && l.toUpperCase() === p)).find(Boolean)
+            || S.labels.find(l => isECG(l) && S.vis[l]);
+  let hr = NaN;
+  if (lead){
+    const {sig, bad} = holdOverGaps(windowSlice(lead));
+    const peaks = quickQRS(sig, S.fs, bad);
+    if (peaks.length > 2){
+      const rr = [];
+      for (let i=1;i<peaks.length;i++) rr.push((peaks[i]-peaks[i-1])/S.fs);
+      rr.sort((a,b)=>a-b);
+      hr = 60/rr[rr.length>>1];
+    }
+  }
+  box.appendChild(cell(lead ? `HR (${lead})` : 'HR',
+    Number.isFinite(hr)?Math.round(hr):'--', 3, getCSS('--ecg'), !Number.isFinite(hr)));
+
+  for (const lab of S.labels){
+    if (S.type[lab] !== 'pressure' || !S.vis[lab]) continue;
+    const f = windowSlice(lab).filter(Number.isFinite);
+    if (f.length < 10){ box.appendChild(cell(lab, '--', 11, S.colour[lab], true)); continue; }
+    const s = [...f].sort((a,b)=>a-b);
+    const sys = s[Math.floor(s.length*0.98)], dia = s[Math.floor(s.length*0.02)];
+    const mean = f.reduce((a,b)=>a+b,0)/f.length;
+    box.appendChild(cell(lab, (sys-dia) > 15
+      ? `${Math.round(sys)}/${Math.round(dia)}/${Math.round(mean)}` : mean.toFixed(1),
+      11, S.colour[lab], false));
+  }
+  for (const m of MONITOR){
+    const lab = S.labels.find(l => m.re.test(l));
+    let txt = '--', empty = true;
+    if (lab){
+      const f = windowSlice(lab).filter(Number.isFinite);
+      if (f.length){ txt = m.fmt(medianOf(f)); empty = false; }
+    }
+    box.appendChild(cell(m.key, txt, m.w, '#cfe0f0', empty));
+  }
+  let tot=0, ok=0;
+  for (const l of S.labels){ if (!S.vis[l]) continue;
+    for (const v of windowSlice(l)){ tot++; if (Number.isFinite(v)) ok++; } }
+  const pct = tot ? 100*ok/tot : 0;
+  box.appendChild(cell('valid', (pct>=99.95?'100':pct.toFixed(1))+'%', 6,
+    pct>95?getCSS('--ecg'):pct>75?getCSS('--warn'):getCSS('--bad'), false));
+
+  $('tpos').textContent = fmtDur(S.t0) + (S.start
+    ? '  ' + new Date(S.start.getTime()+S.t0*1000).toLocaleTimeString() : '');
+}
+function holdOverGaps(arr){
+  const sig = new Float64Array(arr.length), bad = new Uint8Array(arr.length);
+  let last = 0;
+  for (let i=0;i<arr.length;i++){
+    if (Number.isFinite(arr[i])) last = arr[i]; else bad[i] = 1;
+    sig[i] = last;
+  }
+  return {sig, bad};
+}
+function quickQRS(x, fs, bad){
+  const d = new Float64Array(x.length);
+  for (let i=2;i<x.length-2;i++) d[i] = Math.abs(x[i+2]-x[i-2]);
+  const s = Array.from(d).filter(v=>v>0).sort((a,b)=>a-b);
+  if (s.length < 20) return [];
+  const thr = 0.45*s[Math.floor(s.length*0.98)];
+  if (!(thr>0)) return [];
+  const ref = Math.round(0.28*fs), look = Math.round(0.12*fs);
+  const hits = []; let i = 0;
+  while (i < d.length){
+    if (d[i] > thr){
+      let best = i;
+      for (let j=i, end=Math.min(d.length,i+look); j<end; j++) if (d[j] > d[best]) best = j;
+      if (!(bad && bad[best])) hits.push(best);
+      i = best+ref;
+    } else i++;
+  }
+  if (hits.length < 3) return hits;
+  const med = medianOf(hits.map(k => d[k]));
+  return hits.filter(k => d[k] >= 0.5*med);
+}
+
+// ------------------------------------------------------------ segments ----
+function renderSegs(){
+  const list = $('segList'); list.innerHTML = '';
+  S.segs.forEach((sg,i) => {
+    const d = document.createElement('div');
+    d.className = 'seg' + (i===S.active?' on':'');
+    const a = sg.a==null?'--:--:--':fmtDur(sg.a), b = sg.b==null?'--:--:--':fmtDur(sg.b);
+    const len = (sg.a!=null && sg.b!=null) ? ` (${fmtDur(Math.abs(sg.b-sg.a))})` : '';
+    d.innerHTML = `<span class="ix">${i+1}</span><span class="rg">${a} &rarr; ${b}${len}</span>
+                   <button title="remove segment">&times;</button>`;
+    d.querySelector('.ix').onclick = () => { S.active = i; renderSegs(); };
+    d.querySelector('.rg').onclick = () => { S.active = i; renderSegs(); if (sg.a!=null) seek(sg.a); };
+    d.querySelector('button').onclick = e => {
+      e.stopPropagation();
+      S.segs.splice(i,1);
+      if (!S.segs.length) S.segs = [{a:null,b:null}];
+      S.active = Math.min(S.active, S.segs.length-1);
+      renderSegs();
+    };
+    list.appendChild(d);
+  });
+  // enabled when ANY segment is complete -- the dialog picks which ones to write
+  const ready = S.segs.some(s => s.a!=null && s.b!=null && Math.abs(s.b-s.a) > 0.5);
+  $('expSeg').disabled = $('expSegRaw').disabled = !ready;
+  drawSegBar();
+  if (S.bin) updateCli();
+}
+function drawSegBar(){
+  const bar = $('segs'); bar.innerHTML = '';
+  if (!S.n) return;
+  const D = dur();
+  S.segs.forEach((sg,i) => {
+    const on = i===S.active;
+    if (sg.a!=null && sg.b!=null){
+      const a = Math.min(sg.a,sg.b), b = Math.max(sg.a,sg.b);
+      const el = document.createElement('div'); el.className = 'span';
+      el.style.left = (100*a/D)+'%'; el.style.width = Math.max(0.3, 100*(b-a)/D)+'%';
+      el.style.background = on ? '#37b6ff3d' : '#7d8ea326';
+      bar.appendChild(el);
+    }
+    for (const which of ['a','b']){
+      if (sg[which]==null) continue;
+      const h = document.createElement('div'); h.className = 'h';
+      h.style.left = (100*sg[which]/D)+'%';
+      h.style.background = on ? getCSS('--accent') : '#7d8ea3';
+      h.title = `${which==='a'?'In':'Out'} — segment ${i+1} (drag to move; the display follows)`;
+      h.addEventListener('pointerdown', ev => {
+        ev.preventDefault(); ev.stopPropagation();
+        S.active = i;
+        const track = $('track').getBoundingClientRect();
+        const move = m => {
+          const t = clamp((m.clientX-track.left)/track.width, 0, 1) * D;
+          S.segs[i][which] = Math.round(t*10)/10;
+          drawSegBar();
+          // scrub the waveform with the handle so the cut point can be judged by eye
+          S.t0 = clamp(which==='a' ? t : t - S.win, 0, Math.max(0, D - S.win));
+          $('scrub').value = S.t0; $('goto').value = Math.round(S.t0);
+          refresh();
+        };
+        const up = () => {
+          document.removeEventListener('pointermove', move);
+          document.removeEventListener('pointerup', up);
+          const s = S.segs[i];
+          if (s.a!=null && s.b!=null && s.b < s.a){ const t=s.a; s.a=s.b; s.b=t; }
+          renderSegs();
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up);
+      });
+      bar.appendChild(h);
+    }
+  });
+}
+function setMark(which){
+  if (!S.bin) return;
+  const sg = S.segs[S.active];
+  if (which==='a') sg.a = Math.round(S.t0*10)/10;
+  else sg.b = Math.round((S.t0 + S.win)*10)/10;
+  if (sg.a!=null && sg.b!=null && sg.b < sg.a){ const t = sg.a; sg.a = sg.b; sg.b = t; }
+  renderSegs();
+}
+async function autoTrim(){
+  if (!S.bin || S.exporting) return;
+  S.exporting = true;
+  try{
+    const {fs,c,n} = S, D = dur();
+    const stepS = 15, probe = 1;
+    const press = S.labels.map((l,j) => S.type[l]==='pressure' ? j : -1).filter(j => j>=0);
+    if (!press.length){ status('no pressure channel to detect on'); setTimeout(()=>status(''),2500); return; }
+    const live = [];
+    for (let t=0; t<D; t+=stepS){
+      const i0 = Math.round(t*fs), len = Math.min(Math.round(probe*fs), n-i0);
+      if (len <= 0) break;
+      const v = new Float64Array(await S.bin.slice(i0*c*8, (i0+len)*c*8).arrayBuffer());
+      let on = false;
+      for (const j of press){
+        let mn=Infinity, mx=-Infinity, sum=0;
+        for (let i=0;i<len;i++){ let x = v[i*c+j]; if (x < -1000) x += 13107.2;
+          if (x<mn) mn=x; if (x>mx) mx=x; sum+=x; }
+        if (mx-mn > 8 && sum/len > 0 && sum/len < 250){ on = true; break; }
+      }
+      if (on) live.push(t);
+      if (Math.round(t) % 300 < stepS){
+        status(`scanning for the live period... ${Math.round(100*t/D)}%`);
+        await new Promise(r => setTimeout(r,0));
+      }
+    }
+    if (!live.length){ status('no live pressure found — set In/Out by hand'); setTimeout(()=>status(''),3000); return; }
+    const sg = S.segs[S.active];
+    sg.a = Math.max(0, live[0]-stepS);
+    sg.b = Math.min(D, live[live.length-1]+stepS);
+    renderSegs();
+    status(`live period ${fmtDur(sg.a)} → ${fmtDur(sg.b)}  (trimmed ${fmtDur(D-(sg.b-sg.a))})`);
+    setTimeout(()=>status(''), 5000);
+  } finally { S.exporting = false; }
+}
+
+// -------------------------------------------------------------- export ----
+function fmtLocal(d){
+  const p = (n,w=2) => String(n).padStart(w,'0');
+  return `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} `
+       + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}`;
+}
+function headerLine(withSeg){
+  return [...(withSeg?['segment']:[]), 't_sec', ...(S.start?['timestamp']:[]), ...S.labels]
+    .join(',') + '\n';
+}
+function rowsToText(cols, from, count, startIdx, segNo){
+  const parts = [];
+  for (let i=0;i<count;i++){
+    const t = (startIdx+i)/S.fs;
+    let row = (segNo!=null ? segNo + ',' : '') + t.toFixed(4);
+    if (S.start) row += ',' + fmtLocal(new Date(S.start.getTime()+t*1000));
+    for (let j=0;j<S.c;j++){
+      const v = cols[j][from+i];
+      row += ',' + (Number.isFinite(v) ? (isECG(S.labels[j]) ? v.toFixed(4) : v.toFixed(1)) : '');
+    }
+    parts.push(row);
+  }
+  return parts.join('\n') + '\n';
+}
+function toCSV(useRaw){
+  const d = S.data; if (!d) return null;
+  const src = useRaw ? d.raw : d.chans;
+  return headerLine() + rowsToText(S.labels.map(l => src[l]), d.off, d.len, d.i0);
+}
+function download(name, blob){
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+const rowsIn = (a,b) => Math.max(0, clamp(Math.round(b*S.fs),0,S.n) - clamp(Math.round(a*S.fs),0,S.n-1));
+const estBytes = (rows, withSeg) => rows*(20 + (S.start?24:0) + S.c*8 + (withSeg?3:0));
+const fmtMB = b => b >= 1e9 ? (b/1e9).toFixed(2)+' GB' : (b/1e6).toFixed(0)+' MB';
+
+// A writer is just {put, close, abort}: a streaming file handle where the browser has one,
+// an in-memory Blob otherwise. Pickers need user activation, so call these first.
+async function fileWriter(name, estimate){
+  if (window.showSaveFilePicker){
+    try{
+      const h = await window.showSaveFilePicker({suggestedName:name,
+        types:[{description:'CSV', accept:{'text/csv':['.csv']}}]});
+      const w = await h.createWritable();
+      return {put:s => w.write(s), close:() => w.close(), abort:() => w.abort()};
+    } catch(e){ if (e.name === 'AbortError') return null; }
+  }
+  if (estimate > 4e8 && !confirm(
+      `This will build about ${fmtMB(estimate)} in memory because this browser has no `
+    + `streaming save. Chrome can stream it straight to disk.\n\nContinue anyway?`)) return null;
+  const parts = [];
+  return {put:async s => { parts.push(s); },
+          close:async () => download(name, new Blob(parts, {type:'text/csv'})),
+          abort:async () => {}};
+}
+async function dirWriterFactory(){
+  if (!window.showDirectoryPicker) return null;      // one prompt for N files
+  try{
+    const dir = await window.showDirectoryPicker({mode:'readwrite'});
+    return async name => {
+      const fh = await dir.getFileHandle(name, {create:true});
+      const w = await fh.createWritable();
+      return {put:s => w.write(s), close:() => w.close(), abort:() => w.abort()};
+    };
+  } catch(e){ return null; }
+}
+
+// Stream one time range into an already-open writer. Header is the caller's job.
+async function streamRange(w, aSec, bSec, useRaw, segNo, onProgress){
+  const fs = S.fs;
+  const i0 = clamp(Math.round(aSec*fs), 0, S.n-1);
+  const i1 = clamp(Math.round(bSec*fs), i0+1, S.n);
+  const CHUNK = 60*fs, PAD = 2*fs;
+  const cfg = cfgFromUI();
+  for (let s=i0; s<i1; s+=CHUNK){
+    const e = Math.min(i1, s+CHUNK);
+    const p0 = Math.max(0, s-PAD), p1 = Math.min(S.n, e+PAD);
+    const raw = await readRange(p0, p1);
+    const cols = useRaw ? raw : S.labels.map((lab,j) => cleanChannel(lab, raw[j], fs, cfg));
+    await w.put(rowsToText(cols, s-p0, e-s, s, segNo));
+    if (onProgress) onProgress(e-i0, i1-i0);
+    await new Promise(r => setTimeout(r,0));
+  }
+  return i1-i0;
+}
+
+async function exportRange(aSec, bSec, useRaw, tag){
+  if (S.exporting) return;
+  const name = `${stemName()}_${tag}_${Math.round(aSec)}-${Math.round(bSec)}s_${useRaw?'raw':'clean'}.csv`;
+  const total = rowsIn(aSec, bSec);
+  const w = await fileWriter(name, estBytes(total, false));
+  if (!w) return;
+  S.exporting = true;
+  const t0 = performance.now();
+  try{
+    await w.put(headerLine(false));
+    await streamRange(w, aSec, bSec, useRaw, null, (done, all) =>
+      status(`exporting ${name} — ${(100*done/all).toFixed(0)}%  `
+           + `(${(done/S.fs/60).toFixed(0)} of ${(all/S.fs/60).toFixed(0)} min)`));
+    await w.close();
+    status(`saved ${name} — ${total.toLocaleString()} rows in ${((performance.now()-t0)/1000).toFixed(1)} s`);
+    setTimeout(() => status(''), 6000);
+  } catch(err){
+    console.error(err); status('export failed: ' + err.message);
+    try{ await w.abort(); }catch(_){}
+  } finally { S.exporting = false; refresh(); }
+}
+
+// ------------------------------------------------- multi-segment export ----
+function completeSegs(){
+  return S.segs.map((sg,i) => ({i, sg}))
+    .filter(({sg}) => sg.a!=null && sg.b!=null && Math.abs(sg.b-sg.a) > 0.5)
+    .map(({i, sg}) => ({i, a:Math.min(sg.a,sg.b), b:Math.max(sg.a,sg.b)}));
+}
+function openExportDialog(useRaw){
+  const list = completeSegs();
+  if (!list.length) return;
+  const box = $('mList'); box.innerHTML = '';
+  $('mTitle').textContent = useRaw ? 'Export segments (raw)' : 'Export segments';
+  $('mSub').textContent = useRaw
+    ? 'Exactly as recorded — no unwrap, no masking, no wander removal.'
+    : 'With the cleaning settings currently in the side panel.';
+  $('mCombine').checked = list.length > 1 && $('mCombine').checked;
+
+  list.forEach(s => {
+    const row = document.createElement('div'); row.className = 'pick';
+    row.innerHTML = `<input type="checkbox" checked data-i="${s.i}">
+      <span class="nm">${s.i+1}. ${fmtDur(s.a)} &rarr; ${fmtDur(s.b)}
+      &nbsp;(${fmtDur(s.b-s.a)}, ${rowsIn(s.a,s.b).toLocaleString()} rows)</span>
+      ${s.i===S.active?'<span class="tag">active</span>':''}`;
+    row.querySelector('input').onchange = updateEst;
+    box.appendChild(row);
+  });
+
+  function chosen(){
+    return [...box.querySelectorAll('input:checked')]
+      .map(cb => list.find(s => s.i === +cb.dataset.i));
+  }
+  function updateEst(){
+    const sel = chosen();
+    const rows = sel.reduce((n,s) => n + rowsIn(s.a,s.b), 0);
+    const combine = $('mCombine').checked;
+    $('mEst').textContent = !sel.length ? 'Nothing selected.'
+      : `${sel.length} segment${sel.length>1?'s':''} · ${rows.toLocaleString()} rows · about `
+      + `${fmtMB(estBytes(rows, combine))} · ${combine ? '1 file' : sel.length + ' files'}`;
+    $('mGo').disabled = !sel.length;
+  }
+  $('mCombine').onchange = updateEst;
+  updateEst();
+
+  $('modal').classList.remove('hide');
+  const close = () => { $('modal').classList.add('hide'); $('mGo').onclick = null; $('mCancel').onclick = null; };
+  $('mCancel').onclick = close;
+  $('mGo').onclick = async () => {
+    const sel = chosen(), combine = $('mCombine').checked;
+    close();
+    await exportSegments(sel, useRaw, combine);   // pickers open on this click's activation
+  };
+}
+
+async function exportSegments(sel, useRaw, combine){
+  if (S.exporting || !sel.length) return;
+  const totalRows = sel.reduce((n,s) => n + rowsIn(s.a,s.b), 0);
+  const tag = useRaw ? 'raw' : 'clean';
+  const t0 = performance.now();
+
+  if (combine){
+    const name = `${stemName()}_seg${sel.map(s=>s.i+1).join('+')}_${tag}.csv`;
+    const w = await fileWriter(name, estBytes(totalRows, true));
+    if (!w) return;
+    S.exporting = true;
+    try{
+      await w.put(headerLine(true));
+      let done = 0;
+      for (const s of sel){
+        await streamRange(w, s.a, s.b, useRaw, s.i+1, (d, all) =>
+          status(`exporting ${name} — segment ${s.i+1} — `
+               + `${(100*(done+d)/totalRows).toFixed(0)}% overall`));
+        done += rowsIn(s.a, s.b);
+      }
+      await w.close();
+      status(`saved ${name} — ${sel.length} segments, ${totalRows.toLocaleString()} rows `
+           + `in ${((performance.now()-t0)/1000).toFixed(1)} s`);
+      setTimeout(() => status(''), 7000);
+    } catch(err){
+      console.error(err); status('export failed: ' + err.message);
+      try{ await w.abort(); }catch(_){}
+    } finally { S.exporting = false; refresh(); }
+    return;
+  }
+
+  // one file per segment: ask for a folder once if the browser allows it
+  const mkWriter = await dirWriterFactory();
+  S.exporting = true;
+  let done = 0, written = 0;
+  try{
+    for (const s of sel){
+      const name = `${stemName()}_seg${s.i+1}_${Math.round(s.a)}-${Math.round(s.b)}s_${tag}.csv`;
+      const w = mkWriter ? await mkWriter(name)
+                         : await fileWriter(name, estBytes(rowsIn(s.a,s.b), false));
+      if (!w) continue;                       // user cancelled this one; keep going
+      await w.put(headerLine(false));
+      await streamRange(w, s.a, s.b, useRaw, null, (d) =>
+        status(`exporting ${name} — ${(100*(done+d)/totalRows).toFixed(0)}% overall`));
+      await w.close();
+      done += rowsIn(s.a, s.b); written++;
+    }
+    status(`saved ${written} file${written===1?'':'s'} — ${totalRows.toLocaleString()} rows `
+         + `in ${((performance.now()-t0)/1000).toFixed(1)} s`);
+    setTimeout(() => status(''), 7000);
+  } catch(err){
+    console.error(err); status('export failed: ' + err.message);
+  } finally { S.exporting = false; refresh(); }
+}
+function updateCli(){
+  const c = cfgFromUI(); const f = [];
+  if (!c.unwrap) f.push('--no-unwrap');
+  if (!c.satOn) f.push('--no-sat-mask'); else if (Math.abs(c.satThr-4.99)>1e-9) f.push(`--sat-threshold ${c.satThr}`);
+  if (Math.abs(c.satPad-0.012)>1e-9) f.push(`--sat-pad ${c.satPad}`);
+  if (!c.baseOn) f.push('--no-baseline'); else if (Math.abs(c.baseWin-0.2)>1e-9) f.push(`--baseline-window ${c.baseWin}`);
+  if (Math.abs(c.pPad-0.25)>1e-9) f.push(`--press-pad ${c.pPad}`);
+  if (c.pLo!==-40 || c.pHi!==300)
+    for (const l of S.labels) if (S.type[l]==='pressure') f.push(`--press-limit ${l}=${c.pLo}:${c.pHi}`);
+  if (Number.isFinite(c.hp) && c.hp>0) f.push(`--highpass ${c.hp}`);
+  if (Number.isFinite(c.lp) && c.lp>0) f.push(`--lowpass ${c.lp}`);
+  const sg = S.segs[S.active];
+  if (sg && sg.a!=null && sg.b!=null)
+    f.push(`--start ${Math.round(Math.min(sg.a,sg.b))} --stop ${Math.round(Math.max(sg.a,sg.b))}`);
+  $('cli').textContent = `python scripts/clean_export.py path/to/${stemName()} ${f.join(' ')}`.replace(/\s+$/,'');
+}
+
+// --------------------------------------------------------------- events ----
+$('pickBtn').onclick = $('pickBtn2').onclick = () => $('picker').click();
+$('picker').onchange = e => loadFiles(e.target.files);
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files); });
+
+$('winLen').onchange = e => {
+  S.win = +e.target.value;
+  $('scrub').max = Math.max(0, Math.floor(dur()-S.win));
+  refresh();
+};
+$('speed').onchange = e => { S.speed = +e.target.value; };
+function seek(t){
+  S.t0 = clamp(t, 0, Math.max(0, dur()-S.win));
+  $('scrub').value = S.t0; $('goto').value = Math.round(S.t0);
+  refresh();
+}
+$('prev').onclick = () => seek(S.t0-S.win);
+$('next').onclick = () => seek(S.t0+S.win);
+$('goto').onchange = e => seek(+e.target.value);
+$('scrub').oninput = e => { S.t0 = +e.target.value; $('goto').value = Math.round(S.t0); refresh(); };
+$('hideId').onchange = showCaseInfo;
+$('overlayP').addEventListener('change', draw);
+
+// resizable readout panel
+function setFootH(px){
+  S.footH = clamp(Math.round(px), 46, Math.round(window.innerHeight*0.5));
+  $('foot').style.height = S.footH + 'px';
+  document.documentElement.style.setProperty('--vsize',
+    clamp(Math.round(S.footH*0.34), 15, 46) + 'px');
+  draw();
+}
+$('fgrip').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const y0 = e.clientY, h0 = S.footH;
+  const move = m => setFootH(h0 + (y0 - m.clientY));
+  const up = () => { document.removeEventListener('pointermove', move);
+                     document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
+
+$('play').onclick = () => {
+  S.playing = !S.playing;
+  $('play').innerHTML = S.playing ? '&#10073;&#10073; pause' : '&#9654; play';
+  S.lastTick = performance.now();
+  if (S.playing) requestAnimationFrame(tick);
+};
+function tick(now){
+  if (!S.playing) return;
+  const dt = (now - S.lastTick)/1000;
+  if (dt >= 0.2 && !S.busy){
+    S.lastTick = now;
+    const next = S.t0 + dt*S.speed;
+    if (next >= dur()-S.win){ seek(dur()-S.win); $('play').click(); return; }
+    seek(next);
+  }
+  requestAnimationFrame(tick);
+}
+
+$('setIn').onclick = () => setMark('a');
+$('setOut').onclick = () => setMark('b');
+$('addSeg').onclick = () => { S.segs.push({a:null,b:null}); S.active = S.segs.length-1; renderSegs(); };
+$('clrOne').onclick = () => { S.segs[S.active] = {a:null,b:null}; renderSegs(); };
+$('clrAll').onclick = () => { S.segs = [{a:null,b:null}]; S.active = 0; renderSegs(); };
+$('autoTrim').onclick = autoTrim;
+
+for (const id of ['unwrap','pLo','pHi','pPad','satOn','satThr','satPad','baseOn','baseWin','hp','lp'])
+  $(id).addEventListener('change', refresh);
+
+$('expWin').onclick    = () => { const c = toCSV(false); if (c) download(`${stemName()}_win_${Math.round(S.t0)}s_clean.csv`, new Blob([c],{type:'text/csv'})); };
+$('expWinRaw').onclick = () => { const c = toCSV(true);  if (c) download(`${stemName()}_win_${Math.round(S.t0)}s_raw.csv`,   new Blob([c],{type:'text/csv'})); };
+$('expSeg').onclick    = () => openExportDialog(false);
+$('expSegRaw').onclick = () => openExportDialog(true);
+$('expAll').onclick    = () => exportRange(0, dur(), false, 'full');
+$('expAllRaw').onclick = () => exportRange(0, dur(), true,  'full');
+
+$('copyCli').onclick = async () => {
+  try{ await navigator.clipboard.writeText($('cli').textContent);
+       $('copyCli').textContent = 'Copied'; setTimeout(()=>$('copyCli').textContent='Copy command',1200); }
+  catch{ alert($('cli').textContent); }
+};
+
+document.addEventListener('keydown', e => {
+  if (/INPUT|SELECT|TEXTAREA/.test(e.target.tagName)) return;
+  const k = e.key.toLowerCase();
+  if (e.key==='ArrowLeft'){ e.preventDefault(); seek(S.t0-(e.shiftKey?S.win*6:S.win)); }
+  if (e.key==='ArrowRight'){ e.preventDefault(); seek(S.t0+(e.shiftKey?S.win*6:S.win)); }
+  if (e.key===' '){ e.preventDefault(); $('play').click(); }
+  if (k==='i'){ e.preventDefault(); setMark('a'); }
+  if (k==='o'){ e.preventDefault(); setMark('b'); }
+});
+
+setFootH(S.footH); renderSegs(); updateCli();
+</script>
+</body>
+</html>
