@@ -23,6 +23,7 @@ Data/
 __pycache__/
 *.py[cod]
 .ipynb_checkpoints/
+tests/_out/
 .venv/
 .remember/
 .claude/settings.local.json

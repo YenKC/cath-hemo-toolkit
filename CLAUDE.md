@@ -14,7 +14,7 @@ Tools: `mcp__claude_ai_Context7__resolve-library-id` (resolve the package ID fir
 
 Public repo (`YenKC/cath-hemo-toolkit`) holding two tools that share one definition of every cleaning setting: `viewer/cath_viewer.html` (browser viewer, no build step) and `scripts/clean_export.py` (batch cleaning and CSV export). `sample/SYNTH01.{inf,bin,docx}` is synthetic and safe to use anywhere — regenerate with `scripts/make_sample.py` and `scripts/make_sample_log.py`. Real recordings live in `Data/` locally and are gitignored — see the patient-data section.
 
-No build system and no test suite. `scripts/validate_cleaning.py` is the closest thing: it re-derives every validation number quoted in the docs from the bundled sample.
+No build system. `python tests/run_all.py` runs four Playwright suites against the synthetic sample only — the important one is `test_csv_parity.py`, which checks the viewer's CSV against `clean_export.py`'s column for column and is the only thing enforcing that those two implementations stay in step. `scripts/validate_cleaning.py` re-derives every validation number quoted in the docs from the bundled sample. The suites that exercise real recordings need the gitignored `Data/` and cannot be committed; a green run here means nothing regressed, not that the tool is right on real data.
 
 ## The recording format (`.inf` + `.bin` pair)
 
