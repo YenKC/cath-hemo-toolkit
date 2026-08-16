@@ -47,6 +47,48 @@ RAIL_FRAC = 0.998        # fraction of observed full scale that counts as satura
 WRAP_COUNTS = 65536      # the pressure overflow is a clean 16-bit wrap
 ARTERIAL_RE = re.compile(r'^(AO|AOP|FA|ART|BP)', re.I)
 
+# --------------------------------------------------------------- liveness --
+# These decide only one thing: is a transducer connected and reading, or is the channel
+# sitting at a disconnected placeholder? They are NOT a normality filter, and the
+# difference matters -- an earlier version demanded a median above 30 mmHg of every
+# pressure channel, which is true of an aortic line and false of every right atrium ever
+# recorded, so it deleted 99% of an RA trace.
+#
+# The bands are therefore sized to pathology, not to textbook ranges: severe TR with giant
+# v waves drives RA into the 30s, acute MR drives wedge v waves past 50, severe PAH puts PA
+# systolic near 100, and critical AS puts LV systolic over 250. Anything narrower silently
+# discards exactly the cases worth studying.
+#
+# Pulsatility thresholds are low for the same reason. On VA-ECMO or full bypass the
+# arterial trace is barely pulsatile and can run at a pulse pressure of 2-3 mmHg; that is
+# real signal. All the threshold has to reject is a line that is *flat*, which a
+# disconnected transducer is and a live one never quite is.
+#
+# A block is live when its median is in range AND it is either pulsatile enough, or flat
+# at a level only a connected line reaches. That second clause is what separates a
+# non-pulsatile ECMO or bypass arterial trace -- real signal, pulse pressure of 2-3 mmHg --
+# from a flushed or disconnected line, which is equally flat. Pulsatility alone cannot tell
+# them apart; pulsatility together with level can. Measured on the two real cases, the
+# scattered flat blocks sit at ~10 mmHg (transducer off) or >180 mmHg (flush bag at 300),
+# while perfusing flat support sits in the middle.
+#
+# Fields: (min pulse pressure, min median, max median, flat-ok low, flat-ok high).
+# flat-ok None means a flat trace is never accepted on that channel.
+#
+# Matching is by pattern, so AO2 / FA / ART get the arterial rule without being listed.
+# Order matters: PCW before PA, or the wedge is caught by the pulmonary-artery rule.
+LIVE_RULES = [
+    (re.compile(r'^(PCW|PAW|WEDGE|PAWP)', re.I),         (1.0, -10.0,  80.0, None, None)),
+    (re.compile(r'^(RA|RAP|CVP)\b|^(RA|CVP)\d?$', re.I), (0.8, -10.0,  50.0, None, None)),
+    (re.compile(r'^(PA)', re.I),                         (1.0,  -5.0, 120.0, None, None)),
+    (re.compile(r'^(RV)', re.I),                         (1.0, -10.0, 120.0, None, None)),
+    (re.compile(r'^(LV|LA)', re.I),                      (1.0, -10.0, 270.0, None, None)),
+    (re.compile(r'^(AO|AOP|FA|ART|BP)', re.I),           (8.0,  25.0, 270.0, 40.0, 140.0)),
+]
+# an unrecognised label gets the widest band there is: silently deleting a channel nobody
+# taught this script about is worse than keeping some transducer-off blocks
+LIVE_DEFAULT = (1.0, -20.0, 300.0, None, None)
+
 
 @contextmanager
 def quiet():
@@ -71,8 +113,7 @@ class Config:
         'default': (-40.0, 300.0), 'PCW': (-40.0, 150.0)})
     live_mask: bool = True
     live_block_s: float = 10.0
-    live_rules: dict = field(default_factory=lambda: {   # (min pulse pressure, min med, max med)
-        'default': (8.0, 30.0, 200.0), 'PCW': (3.0, -5.0, 45.0)})
+    live_rules: dict = field(default_factory=dict)   # label -> (min pp, min med, max med)
     highpass: Optional[float] = None           # Hz, off by default
     lowpass: Optional[float] = None            # Hz, off by default
 
@@ -88,8 +129,10 @@ class Config:
             'default', (-np.inf, np.inf)))
 
     def rules_for(self, label):
-        return self.live_rules.get(label, self.live_rules.get(
-            'default', (0.0, -np.inf, np.inf)))
+        rule = self.live_rules.get(label)             # an explicit override always wins
+        if rule is None:
+            rule = next((r for rx, r in LIVE_RULES if rx.match(label)), LIVE_DEFAULT)
+        return tuple(rule) + (None,) * (5 - len(rule))   # accept a 3-tuple override too
 
     def as_flags(self):
         d, out = Config(), []
@@ -214,8 +257,12 @@ def clean_pressure(x, fs, label, cfg, qc):
         with quiet():
             pp = np.nanpercentile(blk, 95, 1) - np.nanpercentile(blk, 5, 1)
             med = np.nanmedian(blk, 1)
-        min_pp, min_med, max_med = cfg.rules_for(label)
-        dead = ~((pp > min_pp) & (med > min_med) & (med < max_med))
+        min_pp, min_med, max_med, flat_lo, flat_hi = cfg.rules_for(label)
+        in_range = (med > min_med) & (med < max_med)
+        alive = pp > min_pp
+        if flat_lo is not None:                # flat but perfusing: ECMO, bypass, full support
+            alive |= (med >= flat_lo) & (med <= flat_hi)
+        dead = ~(in_range & alive)
         mask[:nb * k] |= np.repeat(dead, k)
         mask[nb * k:] = True                  # ragged tail: no block to judge it by
         secs = dead.sum() * cfg.live_block_s

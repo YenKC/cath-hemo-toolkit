@@ -71,10 +71,29 @@ warning below.
 2. *Void out-of-range samples* (AO/default −40…300 mmHg, PCW −40…150) **plus 0.25 s
    either side**, because the transducer rings after a flush and the ringdown is as
    unusable as the spike itself.
-3. *Void stretches where the transducer is not live.* Judged per 10 s block: needs a
-   plausible median and a real pulse pressure. Most of what this removes sits before the
-   case starts and after it ends. A wedge port is genuinely intermittent — it gets used
+3. *Void stretches where the transducer is not live.* Most of what this removes sits before
+   the case starts and after it ends. A wedge port is genuinely intermittent — it gets used
    episodically — so expect gaps mid-case on that channel; those are real, not a bug.
+
+   This test asks **"is a transducer connected and reading?"** and nothing else. It is not
+   a normality filter, and keeping the two apart matters: an earlier version required a
+   median above 30 mmHg of *every* pressure channel, which is true of an aortic line and
+   false of every right atrium ever recorded — it deleted **99.5%** of a real RA trace,
+   including the RA rise during a tamponade that was the most diagnostic thing in the case.
+
+   So the bands (`LIVE_RULES`, matched by pattern so `AO2`/`FA`/`ART` need no entry) are
+   sized to **pathology, not textbook ranges** — severe TR drives RA into the 30s, acute MR
+   drives wedge v waves past 50, severe PAH puts PA systolic near 100, critical AS puts LV
+   over 250. An unrecognised label gets the widest band of all, because silently deleting a
+   channel nobody taught the script about is the worse failure.
+
+   Judged per 10 s block, a block is live when its median is in range **and** it is either
+   pulsatile enough **or** flat at a level only a connected line reaches. That last clause
+   exists for **ECMO and bypass**: a non-pulsatile arterial trace at a pulse pressure of
+   2–3 mmHg is real signal, and pulsatility alone cannot tell it from a flushed or
+   disconnected line. Level can — measured on the real cases, the scattered flat blocks sit
+   at ~10 mmHg (transducer off) or above 180 mmHg (the 300 mmHg flush bag), while perfusing
+   flat support sits between. Override any channel with `Config.live_rules`.
 
 **ECG channels**
 
