@@ -8,15 +8,20 @@
   :root{
     --bg:#0b0f14; --panel:#141a22; --panel2:#1b232e; --line:#2a3542;
     --ink:#dbe6f2; --dim:#7d8ea3; --accent:#37b6ff; --ecg:#3ce77b; --warn:#ffb020; --bad:#ff5d5d;
+    --spo2:#7fd4ff; --monitor:#cfe0f0;   /* SpO2 reads light blue so it is findable at a glance */
+    --trackh:22px;                       /* timeline track height, dragged by #tgrip */
+    --evfont:12px;                       /* log rows and chart annotations, set by #evFont */
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%}
   body{background:var(--bg);color:var(--ink);font:13px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;overflow:hidden}
-  /* sidebar runs from the header straight down to the readout panel */
-  #app{display:grid;grid-template-columns:334px 1fr;grid-template-rows:auto 1fr auto;height:100vh}
+  /* sidebar runs from the header straight down to the readout panel; the log column
+     on the right is only laid out once a case log is actually loaded */
+  #app{display:grid;grid-template-columns:334px 1fr 0px;grid-template-rows:auto 1fr auto;height:100vh}
+  #app.haslog{grid-template-columns:334px 1fr var(--logw,340px)}
 
-  header{grid-column:1/3;display:flex;align-items:center;gap:12px;padding:8px 14px;
+  header{grid-column:1/4;display:flex;align-items:center;gap:12px;padding:8px 14px;
     background:var(--panel);border-bottom:1px solid var(--line)}
   header h1{font-size:14px;margin:0;font-weight:600;letter-spacing:.3px;white-space:nowrap}
   header .sp{flex:1}
@@ -74,20 +79,29 @@
     padding:3px 8px;font:12px var(--mono);color:var(--ink);pointer-events:none;display:none;z-index:5}
   #tip.on{display:block}
 
-  /* track spans only the waveform column */
-  #trackrow{display:flex;align-items:center;gap:10px;padding:5px 12px;
+  /* track spans only the waveform column; --trackh is dragged by #tgrip and everything
+     inside is sized from it, so the whole strip grows together */
+  #trackrow{position:relative;display:flex;align-items:center;gap:10px;padding:5px 12px;
     background:var(--panel);border-top:1px solid var(--line)}
-  #track{position:relative;flex:1;height:22px;display:flex;align-items:center}
-  #segs{position:absolute;left:0;right:0;top:1px;height:20px;pointer-events:none;z-index:3}
-  #segs .span{position:absolute;top:3px;height:14px;border-radius:2px}
-  #segs .h{position:absolute;top:0;width:11px;height:20px;margin-left:-5.5px;border-radius:3px;
-    cursor:ew-resize;pointer-events:auto;opacity:.85}
+  #tgrip{position:absolute;left:0;right:0;top:0;height:7px;cursor:row-resize;z-index:6}
+  #tgrip::after{content:'';position:absolute;left:50%;top:2px;width:44px;height:3px;
+    margin-left:-22px;border-radius:2px;background:#33445a}
+  #tgrip:hover::after{background:var(--accent)}
+  #track{position:relative;flex:1;height:var(--trackh);display:flex;align-items:center}
+  #segs{position:absolute;left:0;right:0;top:1px;height:calc(var(--trackh) - 2px);
+    pointer-events:none;z-index:3}
+  #segs .span{position:absolute;top:3px;height:calc(var(--trackh) - 8px);border-radius:2px}
+  #segs .h{position:absolute;top:0;width:11px;height:calc(var(--trackh) - 2px);
+    margin-left:-5.5px;border-radius:3px;cursor:ew-resize;pointer-events:auto;opacity:.85}
   #segs .h:hover{opacity:1}
-  #segs .h::after{content:'';position:absolute;left:4px;top:5px;width:3px;height:10px;
+  #segs .h::after{content:'';position:absolute;left:4px;top:5px;width:3px;
+    height:max(8px, calc(var(--trackh) - 12px));
     border-left:1px solid #04121c;border-right:1px solid #04121c}
-  #tpos{font:12px/1 var(--mono);color:var(--dim);white-space:nowrap;min-width:20ch;text-align:right}
+  #tpos{font:12px/1 var(--mono);color:var(--dim);white-space:nowrap;min-width:30ch;text-align:right}
+  #tpos b{color:var(--accent)}
+  #tpos .lb{color:#55677c}
 
-  footer{grid-row:3;grid-column:1/3;position:relative;background:#0d1219;
+  footer{grid-row:3;grid-column:1/4;position:relative;background:#0d1219;
     border-top:1px solid var(--line);overflow-x:auto;overflow-y:hidden}
   #fgrip{position:absolute;left:0;right:0;top:0;height:7px;cursor:row-resize;z-index:4}
   #fgrip::after{content:'';position:absolute;left:50%;top:2px;width:44px;height:3px;margin-left:-22px;
@@ -118,6 +132,79 @@
   #modal .est{color:var(--dim);font:12px var(--mono);margin:12px 0 0}
   #modal .mBtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
   #modal .mBtns button{min-width:92px}
+
+  /* ------------------------------------------------------- case-log panel -- */
+  #logside{grid-row:2;grid-column:3;background:var(--panel);border-left:1px solid var(--line);
+    display:none;flex-direction:column;overflow:hidden;position:relative}
+  #app.haslog #logside{display:flex}
+  #loggrip{position:absolute;left:0;top:0;bottom:0;width:6px;cursor:col-resize;z-index:6}
+  #loggrip:hover{background:#37b6ff44}
+  #logtop{padding:10px 12px 8px;border-bottom:1px solid var(--line);flex:none}
+  #logtop .ttl{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+  #logtop .ttl h2{font-size:11px;text-transform:uppercase;letter-spacing:.9px;color:var(--dim);
+    margin:0;border:0;padding:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #logtop .ttl button{padding:2px 7px;font-size:11px}
+  #logSrc{color:var(--dim);font:11px/1.3 var(--mono);margin:-3px 0 7px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #logSearch{width:100%;padding:4px 8px}
+  #logChips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px}
+  .chip{border:1px solid var(--line);background:var(--panel2);border-radius:999px;
+    padding:2px 8px;font-size:11px;cursor:pointer;color:var(--dim);white-space:nowrap;
+    display:flex;align-items:center;gap:5px;user-select:none}
+  .chip .dot{width:7px;height:7px;border-radius:50%;flex:none}
+  .chip.on{color:var(--ink);border-color:#3d4b5c;background:#22303f}
+  .chip.off{opacity:.42}
+  #logAlign{padding:8px 12px;border-bottom:1px solid var(--line);flex:none;font-size:11px}
+  #logAlign .row{margin:4px 0}
+  #logAlign .row label{font-size:11px}
+  #logAlign select{flex:1;min-width:0;font-size:11px;padding:3px 5px}
+  #logAlign input[type=number]{width:74px}
+  #logWarn{color:var(--warn);line-height:1.4;margin:6px 0 0;display:none}
+  #logWarn.on{display:block}
+  #logList{flex:1;overflow-y:auto;padding:4px 0 10px}
+  #logFoot{flex:none;padding:8px 12px;border-top:1px solid var(--line)}
+
+  .ev{display:flex;gap:8px;padding:4px 12px 4px 9px;cursor:pointer;
+    border-left:3px solid transparent;align-items:flex-start}
+  .ev:hover{background:#1b232e}
+  .ev.now{background:#17293a;border-left-color:var(--accent)}
+  .ev.past{opacity:.55}
+  /* every size in a log row derives from --evfont so one control resizes the lot */
+  .ev .tm{font:calc(var(--evfont) - 2px)/1.5 var(--mono);color:var(--dim);
+    flex:none;width:7.5ch;text-align:right}
+  .ev .bd{flex:1;min-width:0}
+  .ev .tx{font-size:var(--evfont);line-height:1.35;overflow-wrap:anywhere}
+  .ev .nt{font-size:calc(var(--evfont) - 1px);color:#9fb2c6;line-height:1.4;
+    overflow-wrap:anywhere;margin-top:1px}
+  .ev .kd{font:calc(var(--evfont) - 2px) var(--mono);color:var(--dim)}
+  .ev .kd .kw{text-transform:uppercase;letter-spacing:.5px}
+  .ev.oob .tm{color:var(--bad);text-decoration:line-through}
+  #logEmpty{color:var(--dim);font-size:12px;padding:14px 12px;line-height:1.5}
+
+  /* log markers live on the scrub track next to the segment handles */
+  #evbar{position:absolute;left:0;right:0;top:0;height:var(--trackh);pointer-events:none;z-index:1}
+  #evbar .et{position:absolute;top:0;width:1px;height:max(6px, calc(var(--trackh) * .42))}
+  #evbar .eb{position:absolute;top:0;height:max(6px, calc(var(--trackh) * .42));
+    min-width:1.5px;border-radius:1px;overflow:hidden}
+  #evbar .eb b{display:block;padding:0 3px;color:#08131c;white-space:nowrap;overflow:hidden;
+    font:600 max(9px, calc(var(--evfont) - 3px))/1.5 var(--mono)}
+
+  #cmodal{position:fixed;inset:0;background:#04080cd6;display:flex;align-items:center;
+    justify-content:center;z-index:22}
+  #cmodal.hide{display:none}
+  .case{display:flex;align-items:center;gap:10px;width:100%;text-align:left;margin:5px 0;
+    padding:9px 11px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;
+    cursor:pointer;color:var(--ink)}
+  .case:hover:not(:disabled){border-color:var(--accent)}
+  .case:disabled{opacity:.5;cursor:default}
+  .case .nm{display:block;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .case .de{display:block;font:11px var(--mono);color:var(--dim);font-weight:400;margin-top:2px}
+  .case .warn{color:var(--warn)}
+  .case .bad{color:var(--bad)}
+  /* the value colour comes from MONITOR.col as an inline style, so the "charted, not
+     sampled" marker has to be the caption -- a rule on .v here would never apply */
+  .vital.fromlog{border-bottom:2px solid #2c4a63}
+  .vital .src{font:9px var(--mono);color:#5d7d96;letter-spacing:.4px}
 </style>
 </head>
 <body>
@@ -128,8 +215,12 @@
     <span class="pill" id="clockinfo"></span>
     <span class="sp"></span>
     <label class="pill" style="cursor:pointer"><input type="checkbox" id="hideId" style="vertical-align:-2px"> hide identifiers</label>
-    <button id="pickBtn">Open .inf + .bin</button>
-    <input type="file" id="picker" multiple accept=".inf,.bin" hidden>
+    <button id="logBtn" title="Add the Mac-Lab case log (.docx / .odt / .txt) for this case">+ case log</button>
+    <button id="dirBtn" title="Pick a folder and the .inf, .bin and case log inside it are found for you. A folder holding several cases opens a chooser.">Open folder</button>
+    <button id="pickBtn">Open files</button>
+    <input type="file" id="picker" multiple accept=".inf,.bin,.docx,.odt,.txt,.log,.xml" hidden>
+    <input type="file" id="dirPicker" webkitdirectory directory multiple hidden>
+    <input type="file" id="logPicker" accept=".docx,.odt,.txt,.log,.xml" hidden>
   </header>
 
   <aside>
@@ -208,7 +299,7 @@
       <button id="expAll" disabled>Whole study &rarr; CSV</button>
       <button id="expAllRaw" disabled>Whole study (raw) &rarr; CSV</button>
     </div>
-    <p class="hint">Same settings, whole file, much faster:</p>
+    <p class="hint" id="expHint">Same settings, whole file, much faster:</p>
     <code id="cli">clean_export.py &lt;stem&gt;</code>
     <div class="btns"><button id="copyCli">Copy command</button></div>
   </aside>
@@ -221,20 +312,61 @@
       <div id="drop">
         <div class="box">
           <h3>Open a recording</h3>
-          <p>Select the <b>.inf</b> and <b>.bin</b> for a case (both at once), or drag them here.</p>
-          <p style="margin-top:12px"><button class="primary" id="pickBtn2">Choose files</button></p>
+          <p><b>Drag a case folder here</b> — the <b>.inf</b>, <b>.bin</b> and <b>case log</b>
+             inside are found for you, and a folder holding several cases opens a chooser.</p>
+          <p style="margin-top:12px">
+            <button class="primary" id="dirBtn2">Choose folder</button>
+            <button id="pickBtn2">Choose files</button>
+          </p>
+          <p style="margin-top:2px;font-size:12px">Picking files instead? Select the
+             <b>.inf</b> and <b>.bin</b> together — a browser cannot look beside a single
+             file, so one on its own is not enough.</p>
         </div>
         <p>Nothing is uploaded. The file is read straight off your disk in this browser tab,
            a few seconds at a time, so a 500&nbsp;MB recording opens instantly.</p>
       </div>
     </div>
     <div id="trackrow">
-      <div id="track"><div id="segs"></div><input type="range" id="scrub" min="0" max="1000" value="0"></div>
+      <div id="tgrip" title="drag to make the timeline track taller — event bars grow with it and get labels once there is room"></div>
+      <div id="track"><div id="evbar"></div><div id="segs"></div><input type="range" id="scrub" min="0" max="1000" value="0"></div>
       <span id="tpos">--:--:--</span>
     </div>
   </main>
 
-  <footer id="foot"><div id="fgrip" title="drag to resize the readout panel"></div><div id="vitals"></div></footer>
+  <aside id="logside">
+    <div id="loggrip" title="drag to resize the log panel"></div>
+    <div id="logtop">
+      <div class="ttl">
+        <h2 id="logTtl">Case log</h2>
+        <button id="logPrev" title="previous shown event (P)">&#9650;</button>
+        <button id="logNext" title="next shown event (N)">&#9660;</button>
+        <button id="logClose" title="unload the case log">&times;</button>
+      </div>
+      <div id="logSrc"></div>
+      <input type="search" id="logSearch" placeholder="filter events (e.g. LAD, balloon)">
+      <div id="logChips"></div>
+    </div>
+    <div id="logAlign">
+      <div class="row"><label title="What the log's clock is pinned to. The .inf Start Time is normally right, but not always — see the warning below when it is not.">Anchor</label>
+        <select id="logAnchor">
+          <option value="header">.inf Start Time</option>
+          <option value="first">first log event = 0 s</option>
+        </select></div>
+      <div class="row"><label title="Added on top of the anchor. Positive moves events later in the recording.">Nudge (s)</label>
+        <input type="number" id="logOff" value="0" step="1"></div>
+      <div class="row"><label title="Resizes the event rows here and the annotation tags drawn on the chart together.">Text size (px)</label>
+        <input type="number" id="evFont" value="12" min="9" max="22" step="1"></div>
+      <p id="logWarn"></p>
+    </div>
+    <div id="logList"></div>
+    <div id="logFoot">
+      <div class="btns"><button id="expEvents">Events &rarr; CSV</button></div>
+      <p class="hint" style="margin:4px 0 0">Click any event to jump there. <b>N</b>/<b>P</b> step
+         through the events currently shown, so filtering to inflations steps balloon to balloon.</p>
+    </div>
+  </aside>
+
+  <footer id="foot" title="Every number here is aggregated over the whole visible window, not read at one instant. Hover the chart for a time cursor showing values at a single moment."><div id="fgrip" title="drag to resize the readout panel"></div><div id="vitals"></div></footer>
 </div>
 
 <div id="modal" class="hide">
@@ -258,6 +390,15 @@
   </div>
 </div>
 
+<div id="cmodal" class="hide">
+  <div class="sheet">
+    <h3>Which case?</h3>
+    <div class="sub" id="cSub"></div>
+    <div id="cList"></div>
+    <div class="mBtns"><button id="cCancel">Cancel</button></div>
+  </div>
+</div>
+
 <script>
 'use strict';
 // ---------------------------------------------------------------- state ----
@@ -265,7 +406,8 @@ const S = {
   inf:null, bin:null, meta:{}, labels:[], n:0, c:0, fs:240, start:null,
   t0:0, win:10, playing:false, speed:10, lastTick:0, split:0.58,
   data:null, vis:{}, scale:{}, type:{}, colour:{},
-  segs:[{a:null,b:null}], active:0,
+  segs:[{a:null,b:null}], active:0, log:null, evFont:12, trackH:22,
+  cur:{t:null, pin:false},
   busy:false, pending:false, exporting:false, layout:null, drag:null, footH:78
 };
 const ECG_NAMES = new Set(['I','II','III','AVR','AVL','AVF','V1','V2','V3','V4','V5','V6',
@@ -273,12 +415,20 @@ const ECG_NAMES = new Set(['I','II','III','AVR','AVL','AVF','V1','V2','V3','V4',
 const NON_SIGNAL = /^(SPO2|SAO2|SAT|RESP|RR|CO2|ETCO2|TEMP|HR|BIS|NBP|NIBP|BSA)$/i;
 const ARTERIAL = /^(AO|AOP|FA|ART|BP)/i;
 const PRESS_COLOURS = ['#ff4d4d','#4da3ff','#ff5cf0','#ffd24d','#ff9a3d','#46e0d0','#b58cff','#8fd14f'];
+// lk/lfmt let the case log stand in when the recording carries no such channel -- which is
+// the usual case: NBP and SpO2 are charted by the nurse, never sampled into the .bin
+// col is applied inline by cell(), so it is the only thing that decides a readout's colour
+// -- a stylesheet rule on .v cannot override an inline style and will silently do nothing.
 const MONITOR = [
-  {key:'SpO2', re:/^(SPO2|SAO2|SAT)$/i, w:4,  fmt:v => v.toFixed(0)+'%'},
-  {key:'NBP',  re:/^(NBP|NIBP)$/i,      w:11, fmt:v => v.toFixed(0)},
-  {key:'RR',   re:/^(RR|RESP)$/i,       w:3,  fmt:v => v.toFixed(0)},
+  {key:'SpO2', re:/^(SPO2|SAO2|SAT)$/i, w:4,  fmt:v => v.toFixed(0)+'%', col:'--spo2',
+   lk:'spo2', lfmt:v => v+'%'},
+  {key:'NBP',  re:/^(NBP|NIBP)$/i,      w:11, fmt:v => v.toFixed(0),
+   lk:'nbp',  lfmt:v => `${v.sys}/${v.dia}/${v.mean}`},
+  {key:'RR',   re:/^(RR|RESP)$/i,       w:3,  fmt:v => v.toFixed(0),
+   lk:'rr',   lfmt:v => String(v)},
   {key:'Temp', re:/^(TEMP)$/i,          w:5,  fmt:v => v.toFixed(1)},
 ];
+const fmtAge = d => d < 90 ? Math.round(d)+'s ago' : Math.round(d/60)+'m ago';
 // scale-box limits: fine enough to land on the defaults, wide enough for any case
 const SCALE_RULES = {ecg:{min:0.1, max:10, step:0.1}, pressure:{min:-20, max:500, step:5},
                      other:{min:1, max:1000, step:1}};
@@ -408,25 +558,146 @@ function overlayRef(prsLabs){
 }
 
 // ------------------------------------------------------------ file load ----
-async function loadFiles(list){
-  let inf=null, bin=null;
-  for (const f of list){
-    if (/\.inf$/i.test(f.name)) inf = f;
-    if (/\.bin$/i.test(f.name)) bin = f;
-  }
-  if (!inf || !bin){ alert('Select both the .inf and the .bin for the case.'); return; }
+// A browser cannot look beside a file it was handed: a File object carries a name and
+// bytes and nothing else -- no path, no directory, by design. So "let me pick only the
+// .bin and find the rest" is not something any amount of code can do. Handing over the
+// *folder* is the version of that which works, either through the folder picker or by
+// dropping the folder on the window, and both land in openFrom() below.
+const stemOf = f => f.name.replace(/\.[^.]+$/,'').toLowerCase();
+const LOG_EXT = /\.(docx|odt|txt|log|xml|csv)$/i;
+const REL = new WeakMap();                       // relative path for dropped-folder files
+const relOf = f => f.webkitRelativePath || REL.get(f) || f.name;
+const dirOf = f => { const r = relOf(f), i = r.lastIndexOf('/'); return i < 0 ? '' : r.slice(0,i); };
+const sameDirFirst = (arr, d) => [...arr].sort((a,b) => (dirOf(a)===d?0:1) - (dirOf(b)===d?0:1));
 
+async function walkEntry(entry, out, depth){
+  if (depth > 5 || out.length > 5000) return;
+  if (entry.isFile){
+    const f = await new Promise((res,rej) => entry.file(res,rej));
+    REL.set(f, (entry.fullPath || entry.name).replace(/^\//,''));
+    out.push(f);
+    return;
+  }
+  if (!entry.isDirectory) return;
+  const rd = entry.createReader();
+  for (;;){                                      // readEntries pages at 100 per call
+    const batch = await new Promise((res,rej) => rd.readEntries(res,rej));
+    if (!batch.length) break;
+    for (const e of batch) await walkEntry(e, out, depth+1);
+  }
+}
+
+async function readHeader(inf){
   const {meta, labels} = parseInf(await inf.text());
   const n = parseInt(meta['Points for Each Channel'], 10);
   const c = parseInt(meta['Number of Channel'], 10);
-  const fs = parseInt((meta['Data Sampling Rate']||'240').match(/\d+/)[0], 10);
-  if (!n || !c){ alert('.inf is missing "Points for Each Channel" / "Number of Channel".'); return; }
-  if (labels.length !== c){ alert(`.inf lists ${labels.length} labels but declares ${c} channels.`); return; }
-  if (bin.size !== n*c*8){
-    alert(`.bin is ${bin.size} bytes but the header implies ${n*c*8} (${n} x ${c} x 8).\n`
-        + `Refusing to guess the layout — is this the matching .bin?`);
+  const m = (meta['Data Sampling Rate'] || '240').match(/\d+/);
+  const fs = m ? parseInt(m[0], 10) : 240;
+  let err = null;
+  if (!n || !c) err = 'missing "Points for Each Channel" / "Number of Channel"';
+  else if (labels.length !== c) err = `lists ${labels.length} labels but declares ${c} channels`;
+  return {meta, labels, n, c, fs, need:n*c*8, err};
+}
+
+// points x channels x 8 has to land on the file size exactly. That identity, not the
+// filename, decides which .bin a header describes -- so a pair filed under the wrong case
+// is caught and named instead of quietly producing meaningless traces.
+function pickBin(cs){
+  const stem = stemOf(cs.inf), need = cs.hdr.need;
+  const fits = cs.bins.filter(b => b.size === need);
+  const bin = fits.find(b => stemOf(b) === stem && dirOf(b) === cs.dir)
+           || fits.find(b => stemOf(b) === stem)
+           || fits.find(b => dirOf(b) === cs.dir)
+           || fits[0] || null;
+  const expected = cs.bins.find(b => stemOf(b) === stem)
+                || cs.bins.find(b => dirOf(b) === cs.dir) || null;
+  return {bin, expected};
+}
+function pickDoc(cs, sole){
+  const stem = stemOf(cs.inf);
+  return cs.docs.find(d => stemOf(d) === stem && dirOf(d) === cs.dir)
+      || cs.docs.find(d => stemOf(d) === stem)
+      || cs.docs.find(d => dirOf(d) === cs.dir)
+      || (sole ? cs.docs[0] : null) || null;
+}
+const caseLabel = cs => (cs.dir ? cs.dir.split('/').pop() + '/' : '') + cs.inf.name;
+
+async function openFrom(list){
+  const files = [...list];
+  const infs = files.filter(f => /\.inf$/i.test(f.name));
+  const bins = files.filter(f => /\.bin$/i.test(f.name));
+  const docs = files.filter(f => LOG_EXT.test(f.name));
+
+  // a log on its own just attaches to the case already open
+  if (!infs.length && !bins.length){
+    if (!docs.length){ alert('Nothing recognised in that selection — no .inf, .bin or case log.'); return; }
+    if (!S.bin){ alert('Open a recording first, then add its case log.'); return; }
+    return loadLog(docs[0]);
+  }
+  if (!infs.length){
+    alert(`Found ${bins.length} .bin file${bins.length>1?'s':''} but no .inf.\n\n`
+        + `The .inf holds the channel count, sample count and rate. Without it a .bin is `
+        + `undifferentiated float64 and there is no way to know how to read it.\n\n`
+        + `Open the folder that holds both, or select the two files together.`);
     return;
   }
+  const cases = [];
+  for (const inf of infs){
+    const dir = dirOf(inf);
+    cases.push({inf, dir, hdr: await readHeader(inf),
+                bins: sameDirFirst(bins, dir), docs: sameDirFirst(docs, dir)});
+  }
+  if (cases.length === 1) return openCase(cases[0], true);
+  // a directory input hands files over in no particular order, so sort for a stable list
+  cases.sort((a,b) => caseLabel(a).localeCompare(caseLabel(b), undefined, {numeric:true}));
+  chooseCase(cases);
+}
+
+function chooseCase(cases){
+  const box = $('cList'); box.innerHTML = '';
+  $('cSub').textContent = `${cases.length} recordings in that selection.`;
+  for (const cs of cases){
+    const {bin} = pickBin(cs);
+    const b = document.createElement('button');
+    b.className = 'case';
+    let note, cls = 'de';
+    if (cs.hdr.err){ note = cs.hdr.err; cls = 'de bad'; }
+    else if (!bin){ note = 'no .bin in this selection matches the header'; cls = 'de bad'; }
+    else {
+      note = `${cs.hdr.c} ch · ${(cs.hdr.n/cs.hdr.fs/3600).toFixed(2)} h`
+           + (pickDoc(cs, false) ? ' · case log found' : ' · no case log');
+    }
+    b.disabled = !!cs.hdr.err || !bin;
+    b.innerHTML = `<div style="flex:1;min-width:0"><span class="nm">${esc(caseLabel(cs))}</span>`
+                + `<span class="${cls}">${esc(note)}</span></div>`;
+    b.onclick = () => { $('cmodal').classList.add('hide'); openCase(cs, false); };
+    box.appendChild(b);
+  }
+  $('cmodal').classList.remove('hide');
+}
+
+async function openCase(cs, sole){
+  const {inf, hdr} = cs;
+  if (hdr.err){ alert(`${inf.name}: ${hdr.err}`); return; }
+  const {meta, labels, n, c, fs, need} = hdr;
+  const {bin, expected} = pickBin(cs);
+  if (!bin){
+    const tried = expected || cs.bins[0];
+    alert(tried
+      ? `${tried.name} is ${tried.size.toLocaleString()} bytes but ${inf.name} implies `
+        + `${need.toLocaleString()} (${n.toLocaleString()} x ${c} x 8).\n\n`
+        + (cs.bins.length > 1
+            ? `None of the ${cs.bins.length} .bin files in the selection match this header.\n\n`
+            : `Open the whole folder and this will pick the matching one.\n\n`)
+        + `Refusing to guess the layout.`
+      : `No .bin found for ${inf.name}. Open the folder that holds both.`);
+    return;
+  }
+  let swapNote = '';
+  if (expected && expected !== bin)
+    swapNote = `${expected.name} does not match ${inf.name} (${expected.size.toLocaleString()} vs `
+             + `${need.toLocaleString()} bytes) — opened ${bin.name} instead, which does. `
+             + `Those two .bin files look swapped.`;
 
   Object.assign(S, {inf, bin, meta, labels, n, c, fs,
                     start:parseClock(meta['Start Time'] || meta['Date']),
@@ -453,6 +724,12 @@ async function loadFiles(list){
   $('scrub').max = Math.max(0, Math.floor(dur() - S.win));
   showCaseInfo();
   await refresh();
+
+  // a log belongs to one recording, so an old one never carries over to a new case
+  S.log = null; setLogPanel(false); $('evbar').innerHTML = '';
+  const doc = pickDoc(cs, sole);
+  if (doc) await loadLog(doc);
+  if (swapNote){ status(swapNote); setTimeout(() => status(''), 15000); }
 }
 
 function showCaseInfo(){
@@ -470,6 +747,15 @@ function showCaseInfo(){
       msg = `<span style="color:var(--warn)">header span ${fmtDur(span)} vs samples ${fmtDur(dur())} (${d>0?'+':''}${d.toFixed(0)} s) — wall clock unverified</span>`;
   }
   $('clockinfo').innerHTML = msg || (S.start ? 'start ' + S.start.toLocaleString() : '');
+  logTitle();
+}
+// the log's filename is the MRN on these exports, so it hides with the other identifiers
+function logTitle(){
+  const L = S.log; if (!L) return;
+  const hide = $('hideId').checked;
+  $('logTtl').textContent = `Case log — ${L.events.length} events`;
+  $('logSrc').textContent = hide ? '(source hidden)' : L.name;
+  $('logSrc').title = hide ? '' : L.name;
 }
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 const fmtDur = s => `${Math.floor(s/3600)}:${String(Math.floor(s/60)%60).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')}`;
@@ -614,7 +900,7 @@ async function refresh(){
     const chans = {}, rawByLab = {};
     S.labels.forEach((lab, j) => { rawByLab[lab] = raw[j]; chans[lab] = cleanChannel(lab, raw[j], fs, cfg); });
     S.data = {i0, len, off:i0-p0, chans, raw:rawByLab};
-    draw(); updateVitals(); updateCli();
+    draw(); updateVitals(); updateCli(); renderLog();
   } catch(e){
     console.error(e); status('read failed: ' + e.message);
   } finally {
@@ -654,7 +940,8 @@ function draw(){
   const prsH = hasP ? totalH-ecgH : 0;
   const divY = padT+ecgH+divH/2;
   const prsY = padT+ecgH+(hasP&&hasE?divH:0);
-  const L = {padL, plotW, padT, ecgH, prsY, prsH, divY:(hasE&&hasP?divY:null), lanes:[]};
+  const L = {padL, plotW, padT, ecgH, prsY, prsH, divY:(hasE&&hasP?divY:null),
+             lanes:[], marks:[]};
 
   drawTimeGrid(padL, padT, plotW, H-padT-padB);
 
@@ -670,6 +957,7 @@ function draw(){
       ctx.fillStyle='#48596b'; ctx.font='9px '+MONO;
       ctx.fillText(S.scale[lab]+' mV', padL-8, yMid+10);
       L.lanes.push({lab, y:yMid-laneH/2, h:laneH});
+      L.marks.push({lab, kind:'ecg', yMid, half, halfRange:S.scale[lab]/2});
     });
   }
 
@@ -689,6 +977,7 @@ function draw(){
       ctx.fillText(`axis = ${ref}`, lx+6, prsY+14);
       // the whole pane scrolls the reference channel, so the wheel keeps working here
       L.lanes.push({lab:ref, y:prsY, h:prsH});
+      prsLabs.forEach(lab => L.marks.push({lab, kind:'p', y:prsY, h:prsH, top}));
     } else {
       const laneGap = 26, laneH = prsH/prsLabs.length;
       prsLabs.forEach((lab,k) => {
@@ -698,10 +987,65 @@ function draw(){
         ctx.fillStyle=S.colour[lab]; ctx.font='600 12px '+MONO; ctx.textAlign='left';
         ctx.fillText(lab, padL+8, ly+14);
         L.lanes.push({lab, y:ly, h:laneH});
+        L.marks.push({lab, kind:'p', y:ly, h:lh, top});
       });
     }
   }
+  drawEventOverlay(padL, padT, plotW, H-padT-padB);
   S.layout = L;
+  drawCursor(L, H-padT-padB);
+}
+
+// A readout in the footer is an aggregate over the whole visible window, so it answers
+// "what did AO do over these 10 s", not "what was AO at this instant". Reading a logged
+// value off the trace needs the second question answered, hence this: one line, the exact
+// time under it, and each trace's value where that line crosses it.
+function drawCursor(L, plotH){
+  if (!S.data || S.cur.t == null) return;
+  const t = clamp(S.cur.t, S.t0, S.t0 + S.win);
+  const x = L.padL + L.plotW * (t - S.t0) / S.win;
+  const px = Math.round(x) + .5;
+  const i = S.data.off + clamp(Math.round((t - S.t0) * S.fs), 0, S.data.len - 1);
+
+  ctx.save();
+  ctx.strokeStyle = S.cur.pin ? getCSS('--accent') : '#9fb2c6';
+  ctx.lineWidth = 1;
+  ctx.setLineDash(S.cur.pin ? [] : [2, 3]);
+  ctx.beginPath(); ctx.moveTo(px, L.padT); ctx.lineTo(px, L.padT + plotH); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // the value on every visible trace, drawn where the line crosses it
+  ctx.font = '600 11px ' + MONO; ctx.textBaseline = 'middle';
+  for (const m of L.marks){
+    const arr = S.data.chans[m.lab];
+    const v = arr ? arr[i] : NaN;
+    if (!Number.isFinite(v)) continue;
+    const y = m.kind === 'ecg'
+      ? m.yMid - clamp(v / m.halfRange, -1.15, 1.15) * m.half
+      : pressY(v, m.y, m.h, m.top);
+    ctx.fillStyle = S.colour[m.lab];
+    ctx.beginPath(); ctx.arc(px, y, 2.6, 0, 6.2832); ctx.fill();
+    const txt = m.kind === 'ecg' ? v.toFixed(2) : v.toFixed(0);
+    const w = ctx.measureText(txt).width;
+    const left = x + 7 + w + 4 < L.padL + L.plotW;
+    const bx = left ? x + 6 : x - w - 10;
+    ctx.fillStyle = '#05080be6'; ctx.fillRect(bx - 2, y - 7, w + 5, 14);
+    ctx.fillStyle = S.colour[m.lab]; ctx.fillText(txt, bx, y);
+  }
+
+  // the time sits at the foot of the plot, by the time axis -- the top belongs to the
+  // event annotations, and a box there hides the first lead's value
+  const lbl = fmtDur(t) + (S.start
+    ? '   ' + new Date(S.start.getTime() + t * 1000).toLocaleTimeString() : '');
+  ctx.font = '600 12px ' + MONO; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  const tw = ctx.measureText(lbl).width;
+  const tx = clamp(x + 6, L.padL, L.padL + L.plotW - tw - 8);
+  const ty = L.padT + plotH;
+  ctx.fillStyle = S.cur.pin ? getCSS('--accent') : '#0c141df2';
+  ctx.fillRect(tx - 4, ty - 17, tw + 8, 17);
+  ctx.fillStyle = S.cur.pin ? '#04121c' : '#dbe6f2';
+  ctx.fillText(lbl, tx, ty - 5);
+  ctx.restore();
 }
 
 // the only draggable thing on the chart, so it is drawn boldly
@@ -804,10 +1148,36 @@ $('plot').addEventListener('pointermove', e => {
   }
   // any movement clears the wheel readout; only the divider gets a hover hint
   const onDiv = overDivider(my);
-  cv.style.cursor = onDiv ? 'row-resize' : 'default';
+  cv.style.cursor = onDiv ? 'row-resize' : 'crosshair';
   tip(onDiv ? 'drag to resize the panes' : null, mx, my);
+  if (!onDiv && !S.cur.pin) setCursorAt(mx);
 });
-$('plot').addEventListener('pointerleave', () => tip(null));
+$('plot').addEventListener('pointerleave', () => {
+  tip(null);
+  if (!S.cur.pin && S.cur.t != null){ S.cur.t = null; scheduleDraw(); }
+});
+// click anywhere on the chart pins the line, so a value can be read without a steady hand
+$('plot').addEventListener('click', e => {
+  const r = cv.getBoundingClientRect();
+  if (overDivider(e.clientY - r.top)) return;
+  S.cur.pin = !S.cur.pin;
+  setCursorAt(e.clientX - r.left);
+});
+function setCursorAt(mx){
+  const L = S.layout;
+  if (!L || !S.data) return;
+  const f = (mx - L.padL) / L.plotW;
+  if (f < -0.02 || f > 1.02){ if (!S.cur.pin){ S.cur.t = null; scheduleDraw(); } return; }
+  S.cur.t = S.t0 + clamp(f, 0, 1) * S.win;
+  scheduleDraw();
+}
+// redraw at most once per frame: pointermove fires far faster than the chart can repaint
+let drawPending = false;
+function scheduleDraw(){
+  if (drawPending) return;
+  drawPending = true;
+  requestAnimationFrame(() => { drawPending = false; draw(); updateTimePos(); });
+}
 $('plot').addEventListener('pointerdown', e => {
   const r = cv.getBoundingClientRect();
   if (!overDivider(e.clientY-r.top)) return;
@@ -839,12 +1209,13 @@ function windowSlice(lab){
   const d = S.data; if (!d || !d.chans[lab]) return [];
   return Array.from(d.chans[lab].subarray(d.off, d.off+d.len));
 }
-function cell(key, value, widthCh, colour, empty){
+function cell(key, value, widthCh, colour, empty, src){
   const d = document.createElement('div');
-  d.className = 'vital' + (empty ? ' empty' : '');
+  d.className = 'vital' + (empty ? ' empty' : '') + (src ? ' fromlog' : '');
   d.innerHTML = `<span class="k">${esc(key)}</span>`
               + `<span class="v" style="color:${empty?'':colour};min-width:${widthCh}ch">`
-              + `${esc(String(value).padStart(widthCh,' '))}</span>`;
+              + `${esc(String(value).padStart(widthCh,' '))}</span>`
+              + (src ? `<span class="src">${esc(src)}</span>` : '');
   return d;
 }
 function updateVitals(){
@@ -864,8 +1235,12 @@ function updateVitals(){
       hr = 60/rr[rr.length>>1];
     }
   }
-  box.appendChild(cell(lead ? `HR (${lead})` : 'HR',
-    Number.isFinite(hr)?Math.round(hr):'--', 3, getCSS('--ecg'), !Number.isFinite(hr)));
+  const lv = logVitalsAt(S.t0 + S.win);
+  if (!Number.isFinite(hr) && lv && lv.v.hr != null)
+    box.appendChild(cell('HR', lv.v.hr, 3, getCSS('--monitor'), false, 'log ' + fmtAge(S.t0+S.win-lv.t)));
+  else
+    box.appendChild(cell(lead ? `HR (${lead})` : 'HR',
+      Number.isFinite(hr)?Math.round(hr):'--', 3, getCSS('--ecg'), !Number.isFinite(hr)));
 
   for (const lab of S.labels){
     if (S.type[lab] !== 'pressure' || !S.vis[lab]) continue;
@@ -880,12 +1255,15 @@ function updateVitals(){
   }
   for (const m of MONITOR){
     const lab = S.labels.find(l => m.re.test(l));
-    let txt = '--', empty = true;
+    let txt = '--', empty = true, src = '';
     if (lab){
       const f = windowSlice(lab).filter(Number.isFinite);
       if (f.length){ txt = m.fmt(medianOf(f)); empty = false; }
+    } else if (m.lk && lv && lv.v[m.lk] != null){
+      // charted, not sampled: label it so nobody reads it as a waveform measurement
+      txt = m.lfmt(lv.v[m.lk]); empty = false; src = 'log ' + fmtAge(S.t0+S.win-lv.t);
     }
-    box.appendChild(cell(m.key, txt, m.w, '#cfe0f0', empty));
+    box.appendChild(cell(m.key, txt, m.w, getCSS(m.col || '--monitor'), empty, src));
   }
   let tot=0, ok=0;
   for (const l of S.labels){ if (!S.vis[l]) continue;
@@ -894,9 +1272,25 @@ function updateVitals(){
   box.appendChild(cell('valid', (pct>=99.95?'100':pct.toFixed(1))+'%', 6,
     pct>95?getCSS('--ecg'):pct>75?getCSS('--warn'):getCSS('--bad'), false));
 
-  $('tpos').textContent = fmtDur(S.t0) + (S.start
-    ? '  ' + new Date(S.start.getTime()+S.t0*1000).toLocaleTimeString() : '');
+  updateTimePos();
 }
+// The footer aggregates the whole window, so say which window. With the cursor up, show
+// the cursor's instant instead -- that is the number the dots on the traces belong to.
+function updateTimePos(){
+  const el = $('tpos');
+  if (!S.n){ el.textContent = '--:--:--'; return; }
+  const a = S.t0, b = Math.min(dur(), S.t0 + S.win);
+  const wall = t => S.start ? new Date(S.start.getTime() + t*1000).toLocaleTimeString() : '';
+  if (S.cur.t != null){
+    const t = clamp(S.cur.t, a, b);
+    el.innerHTML = `<span class="lb">${S.cur.pin ? 'pinned' : 'cursor'}</span> `
+                 + `<b>${esc(fmtDur(t))}</b>  ${esc(wall(t))}`;
+  } else {
+    el.innerHTML = `<span class="lb">window</span> ${esc(fmtDur(a))}&ndash;${esc(fmtDur(b))}`
+                 + `  ${esc(wall(a))}`;
+  }
+}
+
 function holdOverGaps(arr){
   const sig = new Float64Array(arr.length), bad = new Uint8Array(arr.length);
   let last = 0;
@@ -1045,6 +1439,525 @@ async function autoTrim(){
   } finally { S.exporting = false; }
 }
 
+// ============================================================== case log ====
+// The Mac-Lab case log arrives as a Word or ODF document, and it carries what the .bin
+// cannot: balloon inflations with their durations, medications, ACT/SAT results, and the
+// NBP/SpO2 rows there is no channel for. Both formats are ZIP containers wrapping one XML
+// part, so the reader here is a central-directory walk plus DecompressionStream — no
+// library and no network, which is what keeps opening a log with PHI in it acceptable.
+
+async function zipList(file){
+  const tailLen = Math.min(file.size, 66000);
+  const tail = new DataView(await file.slice(file.size-tailLen).arrayBuffer());
+  let e = -1;
+  for (let i=tail.byteLength-22; i>=0; i--) if (tail.getUint32(i,true) === 0x06054b50){ e=i; break; }
+  if (e < 0) return null;                                   // no end-of-central-directory
+  const count = tail.getUint16(e+10,true), size = tail.getUint32(e+12,true);
+  const off = tail.getUint32(e+16,true);
+  if (off === 0xffffffff || size === 0xffffffff) throw new Error('Zip64 documents are not supported');
+  const cd = new DataView(await file.slice(off, off+size).arrayBuffer());
+  const td = new TextDecoder(), out = [];
+  let p = 0;
+  for (let k=0; k<count && p+46 <= cd.byteLength; k++){
+    if (cd.getUint32(p,true) !== 0x02014b50) break;
+    const nlen = cd.getUint16(p+28,true);
+    out.push({name  : td.decode(new Uint8Array(cd.buffer, p+46, nlen)),
+              method: cd.getUint16(p+10,true),
+              csize : cd.getUint32(p+20,true),
+              lho   : cd.getUint32(p+42,true)});
+    p += 46 + nlen + cd.getUint16(p+30,true) + cd.getUint16(p+32,true);
+  }
+  return out;
+}
+async function zipRead(file, ent){
+  const lh = new DataView(await file.slice(ent.lho, ent.lho+30).arrayBuffer());
+  if (lh.getUint32(0,true) !== 0x04034b50) throw new Error('damaged document (bad local header)');
+  // the local header's extra field can be a different length from the central one
+  const at = ent.lho + 30 + lh.getUint16(26,true) + lh.getUint16(28,true);
+  if (!ent.csize) throw new Error('document entry has no recorded size');
+  const blob = file.slice(at, at+ent.csize);
+  if (ent.method === 0) return new Uint8Array(await blob.arrayBuffer());
+  if (ent.method !== 8) throw new Error(`unsupported compression in the document (method ${ent.method})`);
+  if (typeof DecompressionStream !== 'function')
+    throw new Error('this browser cannot inflate zipped documents — Chrome, Edge or Safari 16.4+ can');
+  const s = blob.stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(s).arrayBuffer());
+}
+
+const XENT = {amp:'&', lt:'<', gt:'>', quot:'"', apos:"'", nbsp:' '};
+function unxml(s){
+  return s.replace(/&(#x[0-9a-fA-F]+|#\d+|[a-zA-Z]+);/g, (m,g) => {
+    if (g[0] !== '#') return XENT[g] !== undefined ? XENT[g] : m;
+    const cp = /^#x/i.test(g) ? parseInt(g.slice(2),16) : parseInt(g.slice(1),10);
+    return Number.isFinite(cp) && cp > 0 ? String.fromCodePoint(cp) : m;
+  });
+}
+// One line per paragraph. Entities are decoded only after tags are stripped, so an escaped
+// &lt; in the text can never be mistaken for markup.
+function xmlLines(xml){
+  return xml
+    .replace(/<(?:w:br|w:cr|text:line-break)\b[^>]*>/g, '\n')
+    .replace(/<(?:w:tab|text:tab|text:s)\b[^>]*>/g, ' ')
+    .replace(/<\/(?:w:p|text:p|text:h)>/g, '\n')
+    .replace(/<[^>]*>/g, '')
+    .split('\n')
+    .map(l => unxml(l).replace(/[\s ]+/g,' ').trim());
+}
+async function docLines(file){
+  if (/\.(txt|log|csv)$/i.test(file.name))
+    return (await file.text()).split(/\r?\n/).map(l => l.replace(/[\s ]+/g,' ').trim());
+  if (/\.xml$/i.test(file.name)) return xmlLines(await file.text());
+  const ents = await zipList(file);
+  if (!ents) throw new Error('not a .docx/.odt — no zip directory found');
+  const hit = ents.find(e => e.name === 'word/document.xml') || ents.find(e => e.name === 'content.xml');
+  if (!hit) throw new Error('no word/document.xml or content.xml inside the document');
+  return xmlLines(new TextDecoder().decode(await zipRead(file, hit)));
+}
+
+// ------------------------------------------------------ log event parsing --
+// Kinds are a table rather than a chain of ifs so a lab with different wording can be
+// supported by editing data. First match wins, so the order below is the priority order.
+const EV_KINDS = [
+  {k:'inflation', col:'#ff5d5d', re:/\binflated\s+for\b|\bdeployed\s+for\b|\b(?:balloon|stent)\b[^.]{0,40}\b(?:inflat|deploy)/i},
+  {k:'procedure', col:'#7d8ea3', re:/^procedure\s*:/i},
+  {k:'pressure',  col:'#4da3ff', re:/^[A-Za-z][\w']{0,7}\s*:\s*-?\d+\s*\/\s*-?\d+|^snapshot\b/i},
+  {k:'vitals',    col:'#46e0d0', re:/\bSpO2\b|\bNBP\b|\bHR\s*\d+\s*bpm\b/i},
+  {k:'lab',       col:'#8fd14f', re:/\bACT\b|^SAT\s*:|\bcontrast\b/i},
+  {k:'med',       col:'#ffd24d', re:/\b(?:heparin|nitro\w*|NTG|adenosine?|atropine|dopamine|dobutamine|epinephrine?|norepinephrine?|verapamil|lidocaine|amiodarone|morphine|fentanyl|midazolam|aspirin|ticagrelor|clopidogrel)\b|\b\d[\d,.]*\s*(?:units|mcg|mg|ml)\b/i},
+  {k:'device',    col:'#b58cff', re:/\bthrombect\w*|aspirat\w*|rotablat\w*|IVUS|OCT\b|FFR|iFR|guide\s?wire|guiding|catheter|sheath|pacemaker|IABP|pullback/i},
+  // supply-catalogue lines: "NC Trek 4.0mm x 12mm 143cm As:Abbott 1012453-12". Sizes and
+  // the As:<manufacturer> tail identify them without needing to know any brand names.
+  {k:'hardware',  col:'#7fa3c9', re:/\bAs:\s*\S|\b\d+\s*Fr\b|\b\d+(?:\.\d+)?\s*mm\s*[x×]\s*\d+|\b\d+\s*cm\b|\b0?\.\d+"\s*[x×]/i},
+];
+const EV_OTHER = {k:'other', col:'#8899aa'};
+const T_LINE = /^(\d{1,2}):(\d{2}):(\d{2})(?:\s*([AP])\.?\s*M\.?)?$/i;
+const fmtT = s => (s<0?'-':'') + fmtDur(Math.abs(s));
+
+function sodOf(m){
+  let h = +m[1];
+  const ap = (m[4]||'').toUpperCase();
+  if (ap === 'P' && h !== 12) h += 12;
+  if (ap === 'A' && h === 12) h = 0;
+  return h*3600 + (+m[2])*60 + (+m[3]);
+}
+function classify(text){
+  for (const kd of EV_KINDS) if (kd.re.test(text)) return kd;
+  return EV_OTHER;
+}
+function enrich(e){
+  const t = e.text;
+  let m;
+  if ((m = t.match(/\bfor\s+(\d+(?:\.\d+)?)\s*(?:sec\w*|s)\b/i))) e.dur = +m[1];
+  if ((m = t.match(/@\s*(\d+(?:\.\d+)?)\s*atm/i)))                e.atm = +m[1];
+  if ((m = t.match(/\b(?:in|on|at)\s+the\s+(.+?)\s*\.?\s*$/i)))   e.target = m[1];
+  if ((m = t.match(/\bHR\s*[:=]?\s*(\d+)/i)))                     e.hr = +m[1];
+  if (e.kind === 'pressure'){
+    if ((m = t.match(/(-?\d+)\s*\/\s*(-?\d+)\s*\/\s*(-?\d+)/)))
+      e.p = {sys:+m[1], dia:+m[2], mean:+m[3]};
+    if ((m = t.match(/^(?:snapshot\s*:\s*)?([A-Za-z][\w']{0,7})\s*:/i))) e.ch = m[1].toUpperCase();
+  }
+  if (e.kind === 'vitals'){
+    const v = {};
+    if ((m = t.match(/SpO2\s*:?\s*(\d+)\s*%/i)))                   v.spo2 = +m[1];
+    if ((m = t.match(/(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*NBP/i)))   v.nbp = {sys:+m[1], dia:+m[2], mean:+m[3]};
+    if ((m = t.match(/\bRR\s*:?\s*(\d+)\s*\/?\s*min/i)))           v.rr = +m[1];
+    if (e.hr != null) v.hr = e.hr;
+    if (Object.keys(v).length) e.v = v;
+  }
+  return e;
+}
+// Lines alternate: a bare timestamp, then the summary, then any comment lines, until the
+// next timestamp. Anything before the first timestamp is the patient-information block.
+function parseCaseLog(lines){
+  const events = [], head = [];
+  let cur = null, prev = -1, day = 0;
+  for (const raw of lines){
+    const s = (raw||'').trim();
+    if (!s) continue;
+    const m = s.match(T_LINE);
+    if (m){
+      if (cur && cur.text) events.push(enrich(cur));
+      let sod = sodOf(m);
+      if (prev >= 0 && sod + day*86400 < prev - 3600) day++;   // case ran past midnight
+      sod += day*86400;
+      prev = sod;
+      cur = {sod, text:'', notes:[]};
+      continue;
+    }
+    if (!cur){ head.push(s); continue; }
+    if (!cur.text){
+      cur.text = s;
+      const kd = classify(s);
+      cur.kind = kd.k; cur.col = kd.col;
+    } else cur.notes.push(s);
+  }
+  if (cur && cur.text) events.push(enrich(cur));
+  const info = {};
+  for (const h of head){
+    let m;
+    if ((m = h.match(/^MRN\s*(\S+)/i)))                                  info.mrn = m[1];
+    if ((m = h.match(/^Study\s*Date\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)))   info.date = m[1];
+  }
+  return {events, head, info};
+}
+
+// ------------------------------------------------------------- alignment --
+const sodOfDate = d => d ? d.getHours()*3600 + d.getMinutes()*60 + d.getSeconds() : null;
+function anchorSod(mode){
+  const L = S.log;
+  if (!L || !L.events.length) return 0;
+  if (mode === 'first') return L.events[0].sod;
+  const h = sodOfDate(S.start);
+  return h == null ? L.events[0].sod : h;
+}
+const evT = e => e.sod - anchorSod(S.log.anchor) + S.log.offset;
+// Score an anchor by how much of the log actually lands on the recording. This is what
+// catches a header clock that disagrees with its own case log.
+function anchorScore(mode){
+  const L = S.log, D = dur(), a = anchorSod(mode);
+  if (!L.events.length) return 0;
+  let inside = 0;
+  for (const e of L.events){
+    const t = e.sod - a + L.offset;
+    if (t >= -120 && t <= D+120) inside++;
+  }
+  return inside / L.events.length;
+}
+function autoAnchor(){
+  const L = S.log;
+  const sh = anchorScore('header'), sf = anchorScore('first');
+  L.anchor = (sh >= sf - 1e-9) ? 'header' : 'first';
+  $('logAnchor').value = L.anchor;
+  const w = $('logWarn');
+  const bits = [];
+  if (L.anchor === 'first')
+    bits.push(`The .inf Start Time does not match this log — anchoring on it puts `
+            + `${Math.round(100*(1-sh))}% of events off the recording. Falling back to `
+            + `pinning the first log event to 0 s. Treat sample index, not wall clock, as the time base.`);
+  // the case identifier can sit in Description, in Patient, or only in the filename, so a
+  // mismatch is only reported when the log's MRN turns up in none of them
+  const hay = [S.meta['Description'], S.meta['Patient'], S.inf && S.inf.name].filter(Boolean).join(' ');
+  if (L.info.mrn && !hay.includes(L.info.mrn))
+    bits.push(`This log is labelled ${esc(L.info.mrn)}, which does not appear anywhere in the `
+            + `.inf — is it the log for this recording?`);
+  const D = dur(), span = L.events.length ? L.events[L.events.length-1].sod - L.events[0].sod : 0;
+  if (span > D + 120)
+    bits.push(`The log spans ${fmtDur(span)} but the recording is only ${fmtDur(D)}, so late events fall past the last sample.`);
+  w.innerHTML = bits.join('<br><br>');
+  w.classList.toggle('on', bits.length > 0);
+}
+
+// --------------------------------------------------------- log rendering --
+function shownEvents(){
+  const L = S.log; if (!L) return [];
+  const q = L.query.trim().toLowerCase();
+  return L.events.filter(e => !L.hidden.has(e.kind)
+    && (!q || e.text.toLowerCase().includes(q) || e.notes.join(' ').toLowerCase().includes(q)));
+}
+function evLabel(e){
+  if (e.kind === 'inflation'){
+    const what = /stent/i.test(e.text) ? 'stent' : /cutting/i.test(e.text) ? 'cutting' : 'balloon';
+    return [what, e.target, e.atm != null ? e.atm+'atm' : null, e.dur != null ? e.dur+'s' : null]
+             .filter(Boolean).join(' ');
+  }
+  const t = e.text.replace(/^(?:procedure|snapshot)\s*:\s*/i,'');
+  return t.length > 34 ? t.slice(0,33)+'…' : t;
+}
+function renderChips(){
+  const L = S.log, box = $('logChips'); box.innerHTML = '';
+  const counts = new Map();
+  for (const e of L.events) counts.set(e.kind, (counts.get(e.kind)||0) + 1);
+  const order = [...EV_KINDS.map(k => k.k), EV_OTHER.k].filter(k => counts.has(k));
+  for (const k of order){
+    const col = (EV_KINDS.find(x => x.k===k) || EV_OTHER).col;
+    const c = document.createElement('span');
+    c.className = 'chip ' + (L.hidden.has(k) ? 'off' : 'on');
+    c.innerHTML = `<i class="dot" style="background:${col}"></i>${esc(k)} ${counts.get(k)}`;
+    c.onclick = () => {
+      if (L.hidden.has(k)) L.hidden.delete(k); else L.hidden.add(k);
+      renderChips(); renderLog(); drawEvBar(); draw();
+    };
+    box.appendChild(c);
+  }
+}
+// Rebuilding the list on every seek would reset the scroll box, so the rows are built only
+// when the filter or the alignment actually changes; each refresh then just re-flags which
+// of them the current window is sitting on.
+let lastNowKey = '', logSig = null, logRows = [];
+function renderLog(){
+  const L = S.log, list = $('logList');
+  if (!L){ list.innerHTML = ''; logSig = null; logRows = []; return; }
+  const sig = [...L.hidden].sort().join('|') + ' ' + L.query + ' '
+            + L.anchor + ' ' + L.offset + ' ' + L.events.length;
+  if (sig !== logSig){
+    logSig = sig; logRows = []; list.innerHTML = '';
+    const evs = shownEvents(), D = dur();
+    if (!evs.length){
+      list.innerHTML = `<div id="logEmpty">Nothing matches. Clear the search box, `
+                     + `or switch a category back on above.</div>`;
+      return;
+    }
+    for (const e of evs){
+      const t = evT(e);
+      const row = document.createElement('div');
+      row.className = 'ev' + (t < -120 || t > D+120 ? ' oob' : '');
+      const clock = S.start ? new Date(S.start.getTime() + t*1000).toLocaleTimeString() : '';
+      row.title = `log clock ${fmtClock(e.sod)}` + (clock ? `  ·  recording clock ${clock}` : '');
+      row.innerHTML =
+        `<span class="tm">${esc(fmtT(t))}</span><div class="bd">` +
+        `<div class="tx">${esc(e.text)}</div>` +
+        (e.notes.length ? `<div class="nt">${esc(e.notes.join(' · '))}</div>` : '') +
+        `<div class="kd"><span class="kw" style="color:${e.col}">${esc(e.kind)}</span>` +
+        (e.dur != null ? ` · ${e.dur} s` : '') + (e.atm != null ? ` · ${e.atm} atm` : '') +
+        (e.target ? ` · ${esc(e.target)}` : '') +
+        `</div></div>`;
+      row.onclick = () => seek(Math.max(0, t - S.win*0.25));
+      list.appendChild(row);
+      logRows.push({e, row, t});
+    }
+  }
+  const t0 = S.t0, t1 = S.t0 + S.win;
+  let nowKey = '', first = null;
+  for (const r of logRows){
+    const end = r.t + (r.e.dur||0);
+    const isNow = end >= t0 && r.t <= t1;
+    r.row.classList.toggle('now', isNow);
+    r.row.classList.toggle('past', !isNow && end < t0);
+    r.row.style.borderLeftColor = isNow ? '' : r.e.col + '77';
+    if (isNow){ nowKey += r.e.sod + ','; if (!first) first = r.row; }
+  }
+  if (nowKey !== lastNowKey){
+    lastNowKey = nowKey;
+    if (first) first.scrollIntoView({block:'nearest'});
+  }
+}
+const fmtClock = sod => {
+  const s = ((sod % 86400) + 86400) % 86400;
+  const h = Math.floor(s/3600), m = Math.floor(s/60)%60;
+  const ap = h < 12 ? 'AM' : 'PM', h12 = (h % 12) || 12;
+  return `${h12}:${String(m).padStart(2,'0')}:${String(Math.floor(s%60)).padStart(2,'0')} ${ap}`;
+};
+// Drag the track taller (#tgrip) and the bars grow with it; once there is vertical room
+// and a bar is wide enough to hold text, it gets its label, turning the strip into a
+// gantt of the whole case rather than a row of anonymous ticks.
+function drawEvBar(){
+  const bar = $('evbar'); bar.innerHTML = '';
+  if (!S.log || !S.n) return;
+  const D = dur(), W = $('track').clientWidth || 1;
+  const roomy = S.trackH >= 34;
+  for (const e of shownEvents()){
+    const t = evT(e);
+    if (t < -30 || t > D+30) continue;
+    const el = document.createElement('div');
+    el.style.left = (100*clamp(t,0,D)/D) + '%';
+    if (e.dur){
+      el.className = 'eb';
+      const pct = Math.max(0.15, 100*Math.min(e.dur, Math.max(0, D-t))/D);
+      el.style.width = pct + '%';
+      if (roomy && pct/100*W >= 34) el.innerHTML = `<b>${esc(evLabel(e))}</b>`;
+    } else el.className = 'et';
+    el.style.background = e.col;
+    bar.appendChild(el);
+  }
+}
+// Events drawn onto the chart itself. Anything with a duration -- a balloon inflation --
+// gets a solid strip along the top edge spanning it, because that is the interval the
+// study actually cares about. The strip carries the meaning, so the tint underneath is
+// kept faint: a 20 s inflation in a 10 s window otherwise floods the whole pane and the
+// ECG it is there to let you read disappears behind it.
+const EV_BAR = 5;
+function drawEventOverlay(x, y, w, h){
+  if (!S.log) return;
+  const t0 = S.t0, t1 = S.t0 + S.win, span = t1 - t0;
+  const px = t => x + w*(t-t0)/span;
+  const evs = shownEvents().filter(e => (evT(e) + (e.dur||0)) >= t0 && evT(e) <= t1);
+  if (!evs.length) return;
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  ctx.lineWidth = 1;
+  for (const e of evs){
+    if (!e.dur) continue;
+    const ta = evT(e), tb = ta + e.dur;
+    const a = clamp(px(ta), x, x+w), b = clamp(px(tb), x, x+w);
+    ctx.fillStyle = e.col + '10';
+    ctx.fillRect(a, y, Math.max(1.5, b-a), h);
+    ctx.fillStyle = e.col;
+    ctx.fillRect(a, y, Math.max(1.5, b-a), EV_BAR);
+    ctx.strokeStyle = e.col + 'aa';
+    for (const [tt, inside] of [[ta, ta >= t0], [tb, tb <= t1]]){
+      if (!inside) continue;                       // no phantom edge at the window border
+      const cx = Math.round(px(tt))+.5;
+      ctx.beginPath(); ctx.moveTo(cx, y); ctx.lineTo(cx, y+h); ctx.stroke();
+    }
+  }
+  // labels stagger over three rows so a burst of events stays readable
+  const rows = [-1e9, -1e9, -1e9];
+  const F = S.evFont, RH = F + 3;
+  ctx.font = F + 'px ' + MONO; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+  for (const e of evs){
+    const t = evT(e);
+    // an inflation longer than the window has no start edge on screen; pin its label to the
+    // left so you can still tell which one you are sitting inside
+    const running = e.dur && t < t0 && t + e.dur > t0;
+    if (!running && (t < t0 || t > t1)) continue;
+    const cx = running ? x + 2 : px(t);
+    if (!e.dur){
+      ctx.strokeStyle = e.col;
+      ctx.setLineDash([3,3]);
+      ctx.beginPath(); ctx.moveTo(Math.round(cx)+.5, y); ctx.lineTo(Math.round(cx)+.5, y+h); ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    const txt = (running ? '< ' : '') + evLabel(e), tw = ctx.measureText(txt).width;
+    let r = rows.findIndex(edge => edge <= cx-4);
+    if (r < 0) r = rows.indexOf(Math.min(...rows));
+    const ly = y + EV_BAR + F + 2 + r*RH;
+    ctx.fillStyle = '#05080be6'; ctx.fillRect(cx+2, ly-F, tw+7, RH);
+    ctx.fillStyle = e.col;       ctx.fillRect(cx, ly-F, 2, RH);
+    ctx.fillStyle = '#dbe6f2';   ctx.fillText(txt, cx+6, ly);
+    rows[r] = cx + tw + 10;
+  }
+  ctx.restore();
+}
+function logVitalsAt(t){
+  const L = S.log; if (!L) return null;
+  let best = null;
+  for (const e of L.events){
+    if (!e.v) continue;
+    const et = evT(e);
+    if (et <= t && (!best || et > best.t)) best = {t:et, v:e.v};
+  }
+  return best;
+}
+function setLogPanel(on){
+  document.getElementById('app').classList.toggle('haslog', !!on);
+  draw();
+}
+async function loadLog(file){
+  try{
+    status('reading the case log...');
+    const lines = await docLines(file);
+    const {events, head, info} = parseCaseLog(lines);
+    if (!events.length){
+      status('');
+      alert('No timestamped events found in that document.\n\n'
+          + 'The reader expects a line holding only a time (e.g. "1:39:40 PM") followed by the '
+          + 'event text, which is how the Mac-Lab log exports.');
+      return;
+    }
+    S.log = {name:file.name, events, head, info, anchor:'header', offset:0,
+             hidden:new Set(), query:''};
+    $('logOff').value = 0; $('logSearch').value = '';
+    autoAnchor();
+    setLogPanel(true);
+    renderChips(); renderLog(); drawEvBar(); showCaseInfo(); updateCli();
+    status(`case log: ${events.length} events over ${fmtDur(events[events.length-1].sod - events[0].sod)}`);
+    setTimeout(() => status(''), 5000);
+    draw(); updateVitals();
+  } catch(err){
+    console.error(err);
+    status('');
+    alert('Could not read that case log.\n\n' + err.message);
+  }
+}
+function unloadLog(){
+  S.log = null; setLogPanel(false);
+  $('evbar').innerHTML = '';
+  showCaseInfo(); draw(); updateVitals(); updateCli();
+}
+function csvq(v){
+  const s = String(v == null ? '' : v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+}
+
+// ------------------------------------------- log events as export columns --
+// Same names and order as caselog.EVENT_COLUMNS on the Python side: the two tools have to
+// produce interchangeable CSVs, so changing one means changing both.
+const EV_COLS = ['event','event_kind','infl','infl_n','infl_target','infl_atm','infl_t',
+                 'peri_n','peri_t','log_hr','log_spo2','log_rr',
+                 'log_nbp_sys','log_nbp_dia','log_nbp_mean','log_age_s'];
+const PERI_WINDOW = 120;                 // seconds either side of an inflation peri_t covers
+
+function lastAtOrBefore(arr, t){
+  let lo = 0, hi = arr.length-1, r = -1;
+  while (lo <= hi){ const m = (lo+hi)>>1; if (arr[m] <= t){ r = m; lo = m+1; } else hi = m-1; }
+  return r;
+}
+// Precomputed once per export; every lookup is a binary search over a few dozen entries,
+// so widening a 2.4 M-row CSV with these costs a few seconds, not minutes.
+function evPlan(){
+  const L = S.log; if (!L || !L.events.length) return null;
+  const rows = L.events.map(e => ({t: evT(e), e})).sort((a,b) => a.t - b.t);
+  const at = new Map();
+  for (const {t, e} of rows){
+    const i = Math.floor(t*S.fs), cur = at.get(i);
+    if (cur){ cur.text += ' | ' + e.text; cur.kind += '|' + e.kind; }
+    else at.set(i, {text:e.text, kind:e.kind});
+  }
+  const infl = rows.filter(x => x.e.kind === 'inflation').map((x,k) => ({
+    a:x.t, b:x.t + (x.e.dur||0), n:k+1, tgt:x.e.target||'', atm:x.e.atm}));
+  const vit = rows.filter(x => x.e.v).map(x => ({t:x.t, v:x.e.v}));
+  return {at, infl, vit, starts: infl.map(x=>x.a), vt: vit.map(x=>x.t)};
+}
+function evRow(P, t, i){
+  const pt = P.at.get(i);
+  const out = [csvq(pt ? pt.text : ''), pt ? pt.kind : ''];
+  const k = lastAtOrBefore(P.starts, t);
+  const f = k >= 0 && t < P.infl[k].b ? P.infl[k] : null;
+  out.push(f ? '1' : '0',
+           f ? f.n : '', f ? csvq(f.tgt) : '',
+           f && f.atm != null ? f.atm : '',
+           f ? (t - f.a).toFixed(4) : '');
+  if (P.starts.length){
+    // nearest inflation start, which is what every inflation gets aligned on
+    const a = k, b = Math.min(k+1, P.starts.length-1);
+    const ia = a < 0 ? b : a;
+    const pick = Math.abs(t - P.starts[ia]) <= Math.abs(t - P.starts[b]) ? ia : b;
+    const d = t - P.starts[pick];
+    out.push(Math.abs(d) <= PERI_WINDOW ? P.infl[pick].n : '',
+             Math.abs(d) <= PERI_WINDOW ? d.toFixed(4) : '');
+  } else out.push('', '');
+  const j = lastAtOrBefore(P.vt, t);
+  const v = j >= 0 ? P.vit[j].v : null;
+  const num = x => (x == null ? '' : x);
+  out.push(num(v && v.hr), num(v && v.spo2), num(v && v.rr),
+           num(v && v.nbp && v.nbp.sys), num(v && v.nbp && v.nbp.dia),
+           num(v && v.nbp && v.nbp.mean),
+           j >= 0 ? (t - P.vt[j]).toFixed(4) : '');
+  return out;
+}
+function exportEvents(){
+  const L = S.log; if (!L) return;
+  const head = ['t_sec','log_clock','recording_clock','kind','dur_s','atm','target',
+                'channel','sys','dia','mean','hr','spo2','rr','nbp','text','notes'];
+  const rows = [head.join(',')];
+  for (const e of L.events){
+    const t = evT(e);
+    const rc = S.start ? fmtLocal(new Date(S.start.getTime() + t*1000)) : '';
+    const v = e.v || {};
+    rows.push([
+      t.toFixed(1), fmtClock(e.sod), rc, e.kind,
+      e.dur != null ? e.dur : '', e.atm != null ? e.atm : '', csvq(e.target || ''),
+      e.ch || '',
+      e.p ? e.p.sys : '', e.p ? e.p.dia : '', e.p ? e.p.mean : '',
+      e.hr != null ? e.hr : '', v.spo2 != null ? v.spo2 : '', v.rr != null ? v.rr : '',
+      v.nbp ? `${v.nbp.sys}/${v.nbp.dia}/${v.nbp.mean}` : '',
+      csvq(e.text), csvq(e.notes.join(' | '))
+    ].join(','));
+  }
+  download(`${stemName()}_events.csv`, new Blob([rows.join('\n')+'\n'], {type:'text/csv'}));
+}
+function stepEvent(dir){
+  const evs = shownEvents(); if (!evs.length) return;
+  const here = S.t0 + 0.25*S.win;
+  const cand = dir > 0 ? evs.filter(e => evT(e) > here + 0.5)
+                       : evs.filter(e => evT(e) < here - 0.5).reverse();
+  if (!cand.length){ status(dir>0 ? 'no later event' : 'no earlier event'); setTimeout(()=>status(''),1500); return; }
+  const e = cand[0];
+  seek(Math.max(0, evT(e) - S.win*0.25));
+  status(`${fmtT(evT(e))}  ${e.text}`.slice(0,110));
+  setTimeout(() => status(''), 3500);
+}
+
 // -------------------------------------------------------------- export ----
 function fmtLocal(d){
   const p = (n,w=2) => String(n).padStart(w,'0');
@@ -1052,19 +1965,20 @@ function fmtLocal(d){
        + `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}.${p(d.getMilliseconds(),3)}`;
 }
 function headerLine(withSeg){
-  return [...(withSeg?['segment']:[]), 't_sec', ...(S.start?['timestamp']:[]), ...S.labels]
-    .join(',') + '\n';
+  return [...(withSeg?['segment']:[]), 't_sec', ...(S.start?['timestamp']:[]), ...S.labels,
+          ...(S.log ? EV_COLS : [])].join(',') + '\n';
 }
-function rowsToText(cols, from, count, startIdx, segNo){
+function rowsToText(cols, from, count, startIdx, segNo, plan){
   const parts = [];
   for (let i=0;i<count;i++){
-    const t = (startIdx+i)/S.fs;
+    const idx = startIdx+i, t = idx/S.fs;
     let row = (segNo!=null ? segNo + ',' : '') + t.toFixed(4);
     if (S.start) row += ',' + fmtLocal(new Date(S.start.getTime()+t*1000));
     for (let j=0;j<S.c;j++){
       const v = cols[j][from+i];
       row += ',' + (Number.isFinite(v) ? (isECG(S.labels[j]) ? v.toFixed(4) : v.toFixed(1)) : '');
     }
+    if (plan) row += ',' + evRow(plan, t, idx).join(',');
     parts.push(row);
   }
   return parts.join('\n') + '\n';
@@ -1072,7 +1986,7 @@ function rowsToText(cols, from, count, startIdx, segNo){
 function toCSV(useRaw){
   const d = S.data; if (!d) return null;
   const src = useRaw ? d.raw : d.chans;
-  return headerLine() + rowsToText(S.labels.map(l => src[l]), d.off, d.len, d.i0);
+  return headerLine() + rowsToText(S.labels.map(l => src[l]), d.off, d.len, d.i0, null, evPlan());
 }
 function download(name, blob){
   const a = document.createElement('a');
@@ -1121,12 +2035,13 @@ async function streamRange(w, aSec, bSec, useRaw, segNo, onProgress){
   const i1 = clamp(Math.round(bSec*fs), i0+1, S.n);
   const CHUNK = 60*fs, PAD = 2*fs;
   const cfg = cfgFromUI();
+  const plan = evPlan();
   for (let s=i0; s<i1; s+=CHUNK){
     const e = Math.min(i1, s+CHUNK);
     const p0 = Math.max(0, s-PAD), p1 = Math.min(S.n, e+PAD);
     const raw = await readRange(p0, p1);
     const cols = useRaw ? raw : S.labels.map((lab,j) => cleanChannel(lab, raw[j], fs, cfg));
-    await w.put(rowsToText(cols, s-p0, e-s, s, segNo));
+    await w.put(rowsToText(cols, s-p0, e-s, s, segNo, plan));
     if (onProgress) onProgress(e-i0, i1-i0);
     await new Promise(r => setTimeout(r,0));
   }
@@ -1275,14 +2190,69 @@ function updateCli(){
   const sg = S.segs[S.active];
   if (sg && sg.a!=null && sg.b!=null)
     f.push(`--start ${Math.round(Math.min(sg.a,sg.b))} --stop ${Math.round(Math.max(sg.a,sg.b))}`);
+  $('expHint').innerHTML = S.log
+    ? `Every CSV above also carries the ${EV_COLS.length} event columns `
+      + `(<b>infl</b>, <b>peri_t</b>, charted NBP/SpO2 …). Same settings, whole file, much faster:`
+    : 'Same settings, whole file, much faster:';
+  // the batch run has to reproduce the event columns too, anchor and nudge included
+  if (S.log){
+    f.push(`--log path/to/${S.log.name}`);
+    f.push(`--log-anchor ${S.log.anchor}`);
+    if (S.log.offset) f.push(`--log-offset ${S.log.offset}`);
+  }
   $('cli').textContent = `python scripts/clean_export.py path/to/${stemName()} ${f.join(' ')}`.replace(/\s+$/,'');
 }
 
 // --------------------------------------------------------------- events ----
 $('pickBtn').onclick = $('pickBtn2').onclick = () => $('picker').click();
-$('picker').onchange = e => loadFiles(e.target.files);
+$('dirBtn').onclick  = $('dirBtn2').onclick  = () => $('dirPicker').click();
+$('picker').onchange    = e => { openFrom(e.target.files); e.target.value = ''; };
+$('dirPicker').onchange = e => { openFrom(e.target.files); e.target.value = ''; };
+$('cCancel').onclick = () => $('cmodal').classList.add('hide');
+
 document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { e.preventDefault(); if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files); });
+document.addEventListener('drop', async e => {
+  e.preventDefault();
+  // both of these must be read before the first await -- dataTransfer is emptied after it
+  const entries = e.dataTransfer.items
+    ? [...e.dataTransfer.items].map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean)
+    : [];
+  const flat = [...e.dataTransfer.files];
+  if (entries.some(en => en.isDirectory)){
+    status('reading folder...');
+    try{
+      const out = [];
+      for (const en of entries) await walkEntry(en, out, 0);
+      status('');
+      if (!out.length){ alert('That folder is empty.'); return; }
+      return openFrom(out);
+    } catch(err){ console.error(err); status(''); alert('Could not read that folder.\n\n' + err.message); return; }
+  }
+  if (flat.length) openFrom(flat);
+});
+
+// timeline track height, and one size control for the log rows and the chart annotations
+function setTrackH(px){
+  S.trackH = clamp(Math.round(px), 22, 140);
+  document.documentElement.style.setProperty('--trackh', S.trackH + 'px');
+  drawEvBar(); draw();
+}
+$('tgrip').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const y0 = e.clientY, h0 = S.trackH;
+  const move = m => setTrackH(h0 + (y0 - m.clientY));
+  const up = () => { document.removeEventListener('pointermove', move);
+                     document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
+function setEvFont(px){
+  S.evFont = clamp(Math.round(px) || 12, 9, 22);
+  document.documentElement.style.setProperty('--evfont', S.evFont + 'px');
+  $('evFont').value = S.evFont;
+  drawEvBar(); draw();
+}
+$('evFont').onchange = e => setEvFont(+e.target.value);
 
 $('winLen').onchange = e => {
   S.win = +e.target.value;
@@ -1301,6 +2271,46 @@ $('goto').onchange = e => seek(+e.target.value);
 $('scrub').oninput = e => { S.t0 = +e.target.value; $('goto').value = Math.round(S.t0); refresh(); };
 $('hideId').onchange = showCaseInfo;
 $('overlayP').addEventListener('change', draw);
+
+// ---------------------------------------------------------- log controls ----
+$('logBtn').onclick = () => {
+  if (!S.bin){ alert('Open the .inf and .bin for the case first, then add its log.'); return; }
+  $('logPicker').click();
+};
+$('logPicker').onchange = e => { if (e.target.files[0]) loadLog(e.target.files[0]); e.target.value = ''; };
+$('logClose').onclick = unloadLog;
+$('logNext').onclick = () => stepEvent(1);
+$('logPrev').onclick = () => stepEvent(-1);
+$('expEvents').onclick = exportEvents;
+$('logSearch').addEventListener('input', e => {
+  if (!S.log) return;
+  S.log.query = e.target.value;
+  renderLog(); drawEvBar(); draw();
+});
+$('logAnchor').onchange = e => {
+  if (!S.log) return;
+  S.log.anchor = e.target.value;
+  renderLog(); drawEvBar(); draw(); updateVitals(); updateCli();
+};
+$('logOff').onchange = e => {
+  if (!S.log) return;
+  S.log.offset = +e.target.value || 0;
+  renderLog(); drawEvBar(); draw(); updateVitals(); updateCli();
+};
+$('loggrip').addEventListener('pointerdown', e => {
+  e.preventDefault();
+  const x0 = e.clientX;
+  const w0 = parseInt(getComputedStyle($('logside')).width, 10);
+  const move = m => {
+    document.documentElement.style.setProperty('--logw',
+      clamp(w0 + (x0 - m.clientX), 240, Math.round(window.innerWidth*0.5)) + 'px');
+    draw();
+  };
+  const up = () => { document.removeEventListener('pointermove', move);
+                     document.removeEventListener('pointerup', up); };
+  document.addEventListener('pointermove', move);
+  document.addEventListener('pointerup', up);
+});
 
 // resizable readout panel
 function setFootH(px){
@@ -1369,6 +2379,8 @@ document.addEventListener('keydown', e => {
   if (e.key===' '){ e.preventDefault(); $('play').click(); }
   if (k==='i'){ e.preventDefault(); setMark('a'); }
   if (k==='o'){ e.preventDefault(); setMark('b'); }
+  if (k==='n' && S.log){ e.preventDefault(); stepEvent(1); }
+  if (k==='p' && S.log){ e.preventDefault(); stepEvent(-1); }
 });
 
 setFootH(S.footH); renderSegs(); updateCli();

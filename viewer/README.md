@@ -1,7 +1,24 @@
 # Cath Waveform Viewer
 
-A single HTML file. Double-click `cath_viewer.html`, pick a case's **`.inf` and `.bin`
-together**, and it plays back like the Mac-Lab real-time panel.
+A single HTML file. Double-click `cath_viewer.html`, **drag a case folder onto it**, and it
+plays back like the Mac-Lab real-time panel — the `.inf`, the `.bin` and the **case log**
+inside are found for you, so every balloon inflation, drug and NBP reading lands on the
+timeline beside the waveform.
+
+## Opening a case
+
+| you have | do this |
+|---|---|
+| a case folder | drag it onto the window, or **Open folder** |
+| a folder of several cases | same — a chooser lists each one with its channel count, length, and whether a log was found |
+| loose files | **Open files** and select the `.inf` and `.bin` **together** (plus the log) |
+| a log for a case already open | **+ case log** |
+
+**Why you cannot just pick the `.bin`.** A browser hands a page a `File` — a name and some
+bytes. There is no path and no way to look at the folder around it; that is a deliberate
+security boundary, not something the page can work around. Handing over the *folder* is the
+version of "find the rest for me" that actually works, which is why it is the primary path
+here. Pick a `.bin` on its own and the viewer says so rather than failing vaguely.
 
 **To give this to a colleague, send them this one file.** No install, no Python, no
 server, no build step — they open it and load their own `.inf`/`.bin`.
@@ -21,6 +38,15 @@ It never loads the whole recording. A 10 s window of 14 channels at 240 Hz is 2,
 samples per channel — a few hundred kilobytes, fetched as one byte-range slice. **Opening
 is independent of length**, and jumping to the last hour of a recording costs exactly what
 the first hour costs. A multi-hundred-megabyte file appears immediately.
+
+## It checks that the `.bin` belongs to the `.inf`
+
+`points × channels × 8` has to equal the file size exactly, so a mismatch is caught before
+anything is drawn rather than producing plausible-looking nonsense. **When more than one
+`.bin` is in view, the viewer picks the one the header actually describes** — by size, not
+by filename. If that turns out to be a different file from the one sharing the stem, it
+opens the right one and says the two look swapped. Two of the first three real cases handed
+over were filed that way, so open the parent folder and the mix-up resolves itself.
 
 ## Channels come from the file, not from a template
 
@@ -47,10 +73,14 @@ actual pulse pressure.
 | Channels | per channel: show/hide, type override, full-scale range (or wheel over the lane) |
 | Panes | bold draggable line between ECG and pressure |
 | Pressure layout | one lane each (default, so wedge detail survives) or overlaid on the arterial channel's axis for gradients |
-| Readout panel | drag its top edge to resize |
+| Readout panel | drag its top edge to resize; values are window aggregates |
+| Time cursor | hover the chart for per-trace values at one instant; click to pin |
 | Study range | Set In / Set Out (keys **I** / **O**), draggable handles, Auto-detect, multiple segments |
+| Case log | filter chips, search, click to jump, **N** / **P** step through shown events, anchor + nudge, drag the panel edge to resize |
+| Timeline track | drag its top edge to make it taller; event bars grow with it and gain labels |
+| Text size | one control in the log panel resizes the event rows and the chart annotations together |
 | Cleaning | see below — every control has a tooltip |
-| Export | window, any set of segments (chooser dialog), or whole study; cleaned or raw |
+| Export | window, any set of segments (chooser dialog), or whole study; cleaned or raw; plus the event table |
 
 ## Giving ECG or pressure more room
 
@@ -84,6 +114,24 @@ gradient. The wheel over the overlaid pane adjusts that reference channel.
 
 **Drag its top edge** to make it taller or shorter; the values scale with it.
 
+**Every number in this panel is an aggregate over the whole visible window**, not a
+reading at one instant — a 10 s window's AO `146/87/112` is its 98th percentile, 2nd
+percentile and mean across those 10 seconds. That is the right summary for orientation and
+the wrong one for checking a logged value against the trace, so the chart carries a **time
+cursor** for the second job:
+
+- **hover the chart** and a line follows the pointer, marking each visible trace with a dot
+  and its value *at that instant*, with the exact time and wall clock at the foot of the plot;
+- **click to pin it**, so a value can be read without holding the mouse still; click again
+  to release;
+- the readout beside the scrub bar says which you are looking at — `window 0:21:51–0:22:01`
+  when there is no cursor, `pinned 0:21:56  8:33:30 AM` when there is.
+
+That is how a logged reading gets checked against the recording: click the event in the log
+panel to jump there, pin the cursor on it, and compare. On the clock-verified case the log's
+`AO : 149/93/118` at 8:33:30 AM lands on a trace reading 146/87 — which is what agreement
+looks like.
+
 Every cell reserves room for its widest plausible value (`HR` 3 characters, a pressure
 `150/100/130` 11 characters), so the row never reflows as the numbers change. The track
 bar sits **above** the panel and spans only the waveform column, so its position and width
@@ -91,6 +139,102 @@ never move — dragging the position indicator always behaves the same.
 
 Slots for `SpO2`, `NBP`, `RR` and `Temp` are always present and sit empty when the
 recording has no such channel, so a case that does carry them lands in the same layout.
+When there is no channel but a **case log** is loaded, the slot is filled from the most
+recent charted value instead, underlined and captioned `log 2m ago`. That caption is the
+point: an NBP from the log was measured once, minutes ago, by a cuff — it is not the
+arterial line beside it, and the two must never be read as the same kind of number.
+
+**SpO2 is light blue** so it can be picked out of the row at a glance without reading
+labels. Each readout's colour is set inline from a single `col` field in the `MONITOR`
+table, so changing one is a one-line edit — and note that a stylesheet rule targeting `.v`
+cannot override it, which is exactly the trap that made an earlier attempt at this a no-op.
+
+## The case log
+
+The `.bin` has no annotation stream — the file size is exactly `N × C × 8` with nothing
+left over — so the recording alone cannot tell you when a balloon went up. That lives in
+the Mac-Lab case-log document, and loading it is what turns the waveform into something
+you can reason about.
+
+Select it together with the `.inf`/`.bin`, drop it on the window, or use **+ case log** to
+attach one to a case that is already open. `.docx`, `.odt` and plain `.txt` all work.
+Word and ODF files are ZIP containers, and the viewer unpacks them itself with the
+browser's built-in decompressor — **still no library and still no network**, which is what
+keeps opening a document full of PHI acceptable.
+
+The parser wants one thing: a line holding **only a time**, followed by the event text,
+followed by any comment lines. Everything before the first timestamp is treated as the
+patient-information block and is never displayed.
+
+### What it pulls out
+
+Events are sorted into categories you can toggle, each with its own colour:
+
+| category | examples |
+|---|---|
+| `inflation` | balloon, cutting balloon, stent — **duration, atmospheres and target vessel** are parsed out |
+| `pressure` | `AO : 115/55/72, HR = 76`, wedge and PA readings, snapshots |
+| `vitals` | `SpO2 98%; HR 81 bpm; 91/69/74 NBP; RR 61/min` |
+| `med` | heparin, NTG, and anything with a unit/mcg/mg dose |
+| `lab` | ACT, saturations, contrast volume |
+| `procedure` | access, time out, cannulation, anything prefixed `Procedure:` |
+| `device` / `hardware` | thrombectomy, IVUS, pullback; and the supply lines (`NC Trek 4.0mm x 12mm … As:Abbott`) |
+
+Categories are a table in the source, not a chain of conditionals, so a lab that words
+its log differently is a data edit rather than a rewrite.
+
+### On the timeline
+
+An inflation has a **duration**, so it is drawn as an interval, not a pin: a solid strip
+along the top of the chart spanning it, faint tint beneath, and a boundary line at each
+end. Sitting inside an inflation longer than the window, the label pins to the left edge
+prefixed `<` so you can still tell which one. Everything else is a dashed vertical line
+with a label.
+
+The same events tick along the scrub track, and **dragging the track's top edge makes it
+taller** — the bars grow with it, and once one is wide enough to hold text it gets its
+label, turning the strip into a gantt of the whole case instead of a row of anonymous
+ticks. **Text size (px)** in the log panel scales the event rows and the chart annotations
+together, from 9 up to 22.
+
+Click any event to jump to it. **N** and **P** step through the events *currently shown*,
+so filtering to `inflation` and holding **N** walks the case balloon to balloon — which is
+the motion the peri-balloon analysis is actually made of. The search box filters on text,
+so `LAD` narrows to one vessel.
+
+### Anchoring the log to the recording
+
+The log is wall-clock; the waveform is sample index. **Anchor** picks what pins them
+together — the `.inf` `Start Time`, or the first log event at 0 s — and **Nudge** shifts
+by seconds on top.
+
+The viewer chooses for you by scoring each anchor on how much of the log actually lands on
+the recording, then says so when the answer is unflattering. This is not hypothetical: of
+the two cases this was built against, one matched its header **to the second**, and the
+other was off by 5h24m, which would have put every event past the end of the file. That
+case now loads with a warning and the working anchor already selected. A header time that
+disagrees with its own log is a reason to distrust the header, not the log — sample index
+stays the only time base you can lean on.
+
+### The events go into the waveform CSV too
+
+With a log loaded, **every CSV export gains 16 event columns** alongside the signal, so a
+statistics package reads one file rather than joining two: `event`/`event_kind`, the
+inflation state (`infl`, `infl_n`, `infl_target`, `infl_atm`, `infl_t`), the alignment pair
+(`peri_n`, `peri_t` — signed seconds to the nearest inflation, the column to group by), and
+the last charted vitals carried forward (`log_hr`, `log_spo2`, `log_rr`,
+`log_nbp_{sys,dia,mean}`, `log_age_s`).
+
+`scripts/clean_export.py --log <file>` writes exactly the same columns in the same order —
+the generated command in the Export panel already includes `--log` and the anchor — so a
+window checked on screen and a whole study run in batch are interchangeable. The two are
+separate implementations of one spec and are tested against each other byte-for-byte.
+
+**Events → CSV** still writes the standalone table — `t_sec`, both clocks, category,
+duration, atm, target vessel, pressures, HR/SpO2/RR/NBP, text — for joining on `t_sec`.
+
+**hide identifiers** blanks the log's filename along with the patient name; on these
+exports the filename *is* the MRN.
 
 ## Trimming the dead time
 
@@ -159,7 +303,7 @@ just under 5 mV on a ±5 mV recorder, because the rail is not a round number: a 
 - **Remove wander** — estimates the slowly drifting baseline (breathing, electrode
   motion) with a running median and subtracts it, so beats sit on a flat line. It is
   ST-preserving, which matters because ST is measured beat-relative: on the bundled sample
-  the median ST shift from cleaning is −1.7 µV and no beat moves by more than 100 µV.
+  the median ST shift from cleaning is −1.5 µV and no beat moves by more than 100 µV.
   Reproduce with `python scripts/validate_cleaning.py`.
 - **Median window (s)** — the width of that running median. It **must stay longer than a
   QRS** (≈0.1 s). At 0.2 s the median steps over the beat and follows the baseline; drop
@@ -192,4 +336,9 @@ exposed for future recorders that behave differently.
   algorithm.
 - Chrome and Edge stream exports straight to disk. Safari and Firefox lack that API and
   build the file in memory, so the viewer warns above ~400 MB — use the script instead.
+- Reading `.docx`/`.odt` logs uses `DecompressionStream`, so it needs Chrome/Edge 103+,
+  Safari 16.4+ or Firefox 113+. Anything older gets a plain message; export the log to
+  `.txt` and load that instead. Zip64 documents are not handled.
+- The log parser needs its timestamps on their own line. A log laid out some other way
+  reports "no timestamped events found" rather than guessing.
 - Requires a current Chrome, Edge, Safari, or Firefox.

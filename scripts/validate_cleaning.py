@@ -19,11 +19,10 @@ import time
 from pathlib import Path
 
 import numpy as np
-from scipy.signal import butter, filtfilt, find_peaks
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from clean_export import (ECG_LABELS, Config, clean_ecg, clean_pressure,  # noqa: E402
-                          parse_header, quiet)
+                          detect_qrs, parse_header, quiet)
 
 
 def st_of(sig, peaks, fs):
@@ -97,9 +96,9 @@ def main():
     # ---- ST preservation -------------------------------------------------------------
     lead = next((l for l in ('II', 'I', 'V5') if l in cleaned), None)
     if lead:
-        b, a = butter(3, [8 / (fs / 2), 30 / (fs / 2)], 'band')
-        f = filtfilt(b, a, np.nan_to_num(cleaned[lead]))
-        pk, _ = find_peaks(np.abs(f), height=4 * np.median(np.abs(f)), distance=int(0.3 * fs))
+        # the exporter's detector, not a copy of it: a second implementation here drifted
+        # from the real one and kept validating a T-wave-counting bug that was already fixed
+        pk = detect_qrs(cleaned[lead], fs)
         st_c, p = st_of(cleaned[lead], pk, fs)
         st_r, _ = st_of(raw[lead], pk, fs)
         ok = np.isfinite(st_c) & np.isfinite(st_r)

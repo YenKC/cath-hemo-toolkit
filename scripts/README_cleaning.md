@@ -26,6 +26,7 @@ saturation, and the pre-case placeholder values are all still there.
 |---|---|---|
 | `<stem>_clean.csv` / `<stem>_raw.csv` | one per sample | `timestamp`, `t_sec`, then every channel |
 | `<stem>_{clean,raw}_trend.csv` | one per second | HR, per-second pressure mean/min/max, per-channel validity |
+| `<stem>_{clean,raw}_events.csv` | one per log event | with `--log`: the case-log table, joinable on `t_sec` |
 | `<stem>_{clean,raw}_qc.txt` | — | the exact settings used, and what each step removed |
 
 ## Every step is a flag
@@ -42,6 +43,11 @@ saturation, and the pre-case placeholder values are all still there.
 | `--press-pad S` | 0.25 | seconds of post-flush ringdown dropped |
 | `--highpass HZ` / `--lowpass HZ` | off | optional band limiting (see below for why it's off) |
 | `--trend-only` | off | skip the full-rate CSV, which is large |
+| `--log PATH` | off | fold the case log into every row (see below) |
+| `--log-anchor auto\|header\|first` | auto | what pins the log clock to `t_sec` 0 |
+| `--log-offset SEC` | 0 | shift every event on top of the anchor |
+| `--peri-window SEC` | 120 | how far either side of an inflation `peri_t` is filled |
+| `--log-fit` | off | try to align the log by matching charted HR to measured HR |
 
 The `_qc.txt` header records the exact command, so any export can be reproduced.
 
@@ -80,6 +86,80 @@ warning below.
    from unsaturated samples, then subtracted. The 200 ms window is longer than any QRS,
    so the estimate follows the baseline and not the beat.
 
+## Joining the case log to the signal — `--log`
+
+The `.bin` carries no annotation stream, so on its own it cannot say when a balloon went
+up. `--log` reads the Mac-Lab case log and writes its events **into the same rows as the
+signal**, so a statistics package opens one file instead of joining two.
+
+Sixteen columns are appended to both the full-rate and the trend CSV:
+
+| column | meaning |
+|---|---|
+| `event`, `event_kind` | the event text landing in this row, and its category. Sparse — most rows are empty |
+| `infl` | 1 while a balloon or stent is up, else 0 |
+| `infl_n`, `infl_target`, `infl_atm` | which inflation, which vessel, at how many atmospheres |
+| `infl_t` | seconds since that inflation started |
+| `peri_n`, `peri_t` | nearest inflation, and **signed seconds to its start** |
+| `log_hr`, `log_spo2`, `log_rr`, `log_nbp_{sys,dia,mean}` | the last charted values, carried forward |
+| `log_age_s` | how old those charted values are, so stale ones can be dropped |
+
+An inflation is an **interval**, not an instant, which is why `infl` is a state rather than
+a marker: the distinction between "a balloon went up at 52 s" and "these 18 seconds were
+recorded with the artery occluded" is the whole analysis.
+
+`peri_t` is the column to group by. Every inflation aligned on `peri_t == 0` turns
+"does the vital sign move around balloon inflation" into an average over inflations rather
+than a case-by-case eyeball:
+
+```python
+d = pd.read_csv('CASE_clean_trend.csv')
+d[d.peri_t.between(-60, 60)].groupby(d.peri_t.round())['HR_bpm'].mean()
+```
+
+The viewer emits the identical columns, in the identical order, so the two are
+interchangeable; `viewer/cath_viewer.html` and `scripts/caselog.py` are two implementations
+of one spec and must be changed together.
+
+### Aligning the log is the weak link — check it per case
+
+Both clocks are naive local time and they do not always agree. Of the two real cases this
+was built against, one matched its `.inf` `Start Time` **to the second** and the other was
+out by **5 h 24 min**. `auto` scores both anchorings by how many events land on the
+recording and picks the better, saying so in the QC file.
+
+`--log-fit` goes further and tries to align on the data itself, matching the HR the nurse
+charted against the HR measured from the ECG. **On these two cases it does not work, and
+says so rather than guessing.** HR is charted often but barely moves — every offset across
+a ~1500 s span fits within 1 bpm — while AO moves plenty but is charted only twice per
+case. Fitting needs a quantity that is both frequently recorded and genuinely variable, and
+neither qualifies. The guard refuses any fit whose minimum is flat over 120 s.
+
+### The one check a clock cannot fool
+
+A pressure trace cannot begin before the artery that produced it was punctured. Every
+export with `--log` therefore compares when the arterial channel actually goes live
+(first second that is live and stays live 30 s) against the first logged access event:
+
+- on the clock-verified case the trace starts **+131 s** after the logged puncture —
+  puncture, sheath, catheter, zeroed transducer, which is exactly right;
+- on the other case it started **966 s before** access was logged, which is impossible,
+  and proved the anchor wrong by at least that much. Nothing clock-based had caught it.
+
+The QC file states the hard lower bound and, allowing the same 131 s puncture-to-live
+delay, suggests the `--log-offset` that fixes it. Applying it made the check read `+131 s`
+and independently pulled the HR fit's preferred offset from +748 s down to +55 s. It moved
+mean AO during inflation from 107.9 to 119.2 mmHg — alignment is not cosmetic.
+
+Treat the suggestion as an estimate, not a measurement: it assumes no arterial line was
+already in place before the case, which for an emergency it might have been.
+
+So alignment rests on the clock, and the clock has to be fixed upstream. **Ask the lab why
+a header `Start Time` disagrees with its own case log** — that is a recording-system
+question, not something the data can answer. Until then, treat `t_sec` as truth and the
+event times on a mis-anchored case as carrying minutes of uncertainty; the QC file states
+the bound implied by the two spans.
+
 ## What is deliberately NOT applied
 
 - **No mains notch.** The recorder this was built against carries no mains component —
@@ -102,7 +182,7 @@ Against the raw signal, on the bundled synthetic sample:
 
 | check | result |
 |---|---|
-| ST (J+60 vs PR) shift from cleaning | median **−1.7 µV**, IQR [−20.9, +5.7] |
+| ST (J+60 vs PR) shift from cleaning | median **−1.5 µV**, IQR [−20.9, +6.4] |
 | beats shifted past the 100 µV clinical threshold | **0.00%** |
 | baseline wander, lead II | 0.074 → **0.003 mV** (sd of 1 s medians) |
 | baseline wander, V2 (motion artefact) | 0.827 → **0.117 mV** |
